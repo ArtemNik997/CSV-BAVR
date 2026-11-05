@@ -2,13 +2,13 @@ import argparse
 import csv
 import sys
 
-import qscript as qscript
+import qscript
 
 
 def main():
     parser = argparse.ArgumentParser(description="CSV-driven browser video recorder")
     parser.add_argument("--csv", default="input.csv", help="путь к входному CSV (по умолчанию input.csv)")
-    parser.add_argument("--out", default=None, help="папка для видео (по умолчанию значение из qscript_dev)")
+    parser.add_argument("--out", default=None, help="папка для видео (по умолчанию значение из qscript)")
     args = parser.parse_args()
 
     if args.out:
