@@ -236,7 +236,7 @@ def _element_center(page, selector, timeout=30000):
     last_err = None
     for _ in range(6):
         try:
-            loc = page.locator(selector).first
+            loc = page.locator(selector + " >> visible=true").first
             loc.wait_for(state="visible", timeout=timeout)
             loc.scroll_into_view_if_needed(timeout=5000)
             box = loc.bounding_box()
@@ -359,7 +359,7 @@ def _run_scenario(page, url, company_name, city):
     _pause(0.8)
 
     try:
-        bx, by = _element_center(page, SEL_SEARCH_BUTTON, timeout=10000)
+        bx, by = _element_center(page, SEL_SEARCH_BUTTON, timeout=3000)
         _move_smooth(page, cur, bx, by)
         _pause(0.3)
         _click_here(page)
