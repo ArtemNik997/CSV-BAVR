@@ -59,3 +59,18 @@ def make_filename(company_name, original_filename):
         ext = '.webm'
 
     safe_name = re.sub(r'[^w.-]+', '_', company_name.strip()).strip('._')
+    if not safe_name:
+        safe_name = 'video'
+
+    filename = f"{safe_name}{ext}"
+
+    dest_path = os.path.join(UPLOAD_DIR, filename)
+    if os.path.exists(dest_path):
+        name_hash = hashlib.sha1(company_name.encode()).hexdigest()[:8]
+        base, ext = os.path.splitext(filename)
+        filename = f"{base}_{name_hash}{ext}"
+
+    return filename
+
+def build_video_url(filename):
+    return f"{request.host_url}media/{quote(filename)}"
