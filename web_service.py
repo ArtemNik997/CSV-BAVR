@@ -182,3 +182,7 @@ def list_videos():
         })
         
     return jsonify(videos_list), 200
+
+if __name__ == 'main':
+    init_db()
+    app.run(host=HOST, port=PORT, threaded=True, debug=False)
