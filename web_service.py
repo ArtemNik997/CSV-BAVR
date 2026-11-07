@@ -158,3 +158,10 @@ def get_video_url():
         }), 200
     else:
         return jsonify({"error": "Company not found"}), 404
+
+
+@app.route('/media/<filename>', methods=['GET'])
+def serve_media(filename):
+    return send_from_directory(UPLOAD_DIR, filename)
+
+
