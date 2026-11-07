@@ -58,7 +58,7 @@ def make_filename(company_name, original_filename):
     if ext.lower() not in ALLOWED_EXTENSIONS:
         ext = '.webm'
 
-    safe_name = re.sub(r'[^w.-]+', '_', company_name.strip()).strip('._')
+    safe_name = re.sub(r'[^\w.-]+', '_', company_name.strip()).strip('._')
     if not safe_name:
         safe_name = 'video'
 
@@ -127,7 +127,7 @@ def upload_video():
                 updated_at = datetime('now')
         """, (company_name, abs_file_path, video_url))
 
-        db.commit
+        db.commit()
     except Exception as e:
         db.rollback()
         return jsonify({"error": f"Database error: {str(e)}"}), 500
@@ -165,7 +165,7 @@ def serve_media(filename):
     return send_from_directory(UPLOAD_DIR, filename)
 
 
-@app.route('/video', methods=['GET'])
+@app.route('/videos', methods=['GET'])
 def list_videos():
     db = get_db()
     records = db.execute("SELECT * FROM videos ORDER BY updated at DESC")
@@ -183,6 +183,6 @@ def list_videos():
         
     return jsonify(videos_list), 200
 
-if __name__ == 'main':
+if __name__ == '__main__':
     init_db()
     app.run(host=HOST, port=PORT, threaded=True, debug=False)
