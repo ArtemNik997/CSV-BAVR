@@ -4,7 +4,6 @@ import os
 import sys
 import time
 
-from video_client import UploadVideo
 import qscript
 
 
@@ -98,6 +97,8 @@ def main():
                 continue
 
             try:
+                from video_client import UploadVideo
+                
                 video_url = UploadVideo(args.server, path, company)
                 uploaded += 1
                 print("[%d] Uploaded: %s" % (i, video_url))

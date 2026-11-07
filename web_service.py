@@ -53,7 +53,7 @@ def close_db(exception):
     if db is not None:
         db.close()
 
-def make_filename(company_name, original_filename):
+def make_filename(db, company_name, original_filename):
     _, ext = os.path.splitext(original_filename)
     if ext.lower() not in ALLOWED_EXTENSIONS:
         ext = '.webm'
@@ -64,11 +64,15 @@ def make_filename(company_name, original_filename):
 
     filename = f"{safe_name}{ext}"
 
-    dest_path = os.path.join(UPLOAD_DIR, filename)
-    if os.path.exists(dest_path):
-        name_hash = hashlib.sha1(company_name.encode()).hexdigest()[:8]
-        base, ext = os.path.splitext(filename)
-        filename = f"{base}_{name_hash}{ext}"
+    dest_path = os.path.abspath(os.path.join(UPLOAD_DIR, filename))
+    owner = db.execute(
+        "SELECT company_name FROM videos WHERE file_path = ?",
+        (dest_path,)
+    ).fetchone()
+
+    if owner and owner['company_name'] != company_name:
+        name_hash = hashlib.sha1(company_name.encode('utf-8')).hexdigest()[:8]
+        filename = f"{safe_name}_{name_hash}{ext}"
 
     return filename
 
@@ -90,7 +94,8 @@ def upload_video():
     if file.filename == '':
             return jsonify({"error": "Empty filename"}), 400
 
-    filename = make_filename(company_name, file.filename)
+    db = get_db()
+    filename = make_filename(db,company_name, file.filename)
     dest_path = os.path.join(UPLOAD_DIR, filename)
 
     temp_path = dest_path + '.part'
@@ -105,7 +110,6 @@ def upload_video():
     video_url = build_video_url(filename)
     abs_file_path = os.path.abspath(dest_path)
 
-    db = get_db()
     try:
         old_record = db.execute(
             "SELECT file_path FROM videos WHERE company_name = ?",
@@ -168,7 +172,7 @@ def serve_media(filename):
 @app.route('/videos', methods=['GET'])
 def list_videos():
     db = get_db()
-    records = db.execute("SELECT * FROM videos ORDER BY updated at DESC")
+    records = db.execute("SELECT * FROM videos ORDER BY updated_at DESC")
 
     videos_list = []
     for record in records:
