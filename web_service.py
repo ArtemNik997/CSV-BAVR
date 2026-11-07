@@ -136,3 +136,25 @@ def upload_video():
         "company_name": company_name,
         "video_url": video_url
     }), 200
+
+
+@app.route('/get_video_url', methods=['GET'])
+def get_video_url():
+    company_name = request.args.get('company_name', '').strip()
+
+    if not company_name:
+        return jsonify({"error": "Company name parameter is required"}), 400
+
+    db = get_db()
+    record = db.execute(
+        "SELECT company_name, video_url FROM videos WHERE company_name = ?", 
+        (company_name,)
+    ).fetchone()
+
+    if record:
+        return jsonify({
+            "company_name": record['company_name'],
+            "video_url": record['video_url']
+        }), 200
+    else:
+        return jsonify({"error": "Company not found"}), 404
