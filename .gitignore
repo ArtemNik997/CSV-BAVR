@@ -224,3 +224,7 @@ __marimo__/
 
 # Custom
 /video
+/uploads/
+videos.db
+videos.db-wal
+videos.db-shm
