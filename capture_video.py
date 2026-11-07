@@ -3,19 +3,23 @@ import csv
 import os
 import sys
 import time
+from video_client import UploadVideo
+import qscript
 
-from qscript import CaptureVideo_Magento
 
-
-def preview_video(video_url: str, view_seconds: float):
+def preview_video(video_url, view_seconds):
     from playwright.sync_api import sync_playwright
-    
+
+    launch_kwargs = {"headless": False}
+    channel = os.environ.get("QS_BROWSER_CHANNEL")
+    if channel:
+        launch_kwargs["channel"] = channel
+
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=False)
+        browser = p.chromium.launch(**launch_kwargs)
         try:
             page = browser.new_page()
             page.goto(video_url, timeout=30000)
-            
             if view_seconds > 0:
                 time.sleep(view_seconds)
             else:
@@ -27,82 +31,92 @@ def preview_video(video_url: str, view_seconds: float):
             browser.close()
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="CSV-driven Browser Automation Video Recorder with Upload & Preview"
-    )
-    
-    parser.add_argument("--csv", default="input.csv", help="Path to input CSV file")
-    parser.add_argument("--out", default="./video", help="Output directory for videos")
-    parser.add_argument(
-        "--server", 
-        default=None, 
-        help="URL of the web service (e.g., http://127.0.0.1:8000)"
-    )
-    parser.add_argument(
-        "--view-seconds", 
-        type=float, 
-        default=10, 
-        help="Preview duration in seconds (>0) or wait for Enter (0)"
-    )
-    
-    args = parser.parse_args()
-    
-    if args.view_seconds < 0:
-        parser.error("--view-seconds cannot be negative")
-        
-    if args.server and not args.server.startswith(("http://", "https://")):
-        parser.error("--server must start with http:// or https://")
-    
-    os.makedirs(args.out, exist_ok=True)
-    
+def non_negative_float(value):
     try:
-        with open(args.csv, 'r', encoding='utf-8') as f:
-            reader = csv.DictReader(f, delimiter=';')
-            rows = list(reader)
-    except FileNotFoundError:
-        print(f"Error: CSV file '{args.csv}' not found.", file=sys.stderr)
-        sys.exit(1)
-    
-    saved_count = 0
-    upload_count = 0
-    
-    for i, row in enumerate(rows, 1):
-        company_name = row.get('Company Name', '').strip()
-        city = row.get('City', '').strip()
-        
-        if not company_name or not city:
-            print(f"[{i}] Skipping row {i}: missing Company Name or City", file=sys.stderr)
-            continue
-            
-        print(f"[{i}] Processing: {company_name} ({city})")
-        
-        
-        path = CaptureVideo_Magento(city, args.out)
-        
-        if path:
-            print(f"[{i}] Saved: {path}")
-            saved_count += 1
-            
-            if args.server:
-                try:
-                    from video_client import UploadVideo
-                    
-                    url = UploadVideo(args.server, path, company_name)
-                    print(f"[{i}] Uploaded: {url}")
-                    upload_count += 1
-                    
-                    preview_video(url, args.view_seconds)
-                    
-                except Exception as e:
-                    print(f"[{i}] UPLOAD/PREVIEW FAILED: {e}", file=sys.stderr)
-        else:
-            print(f"[{i}] Failed to record video for {company_name}", file=sys.stderr)
-    
-    print(f"\nDone. Saved: {saved_count}/{len(rows)}")
+        number = float(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError("Number expected, received %r" % value)
+    if number < 0:
+        raise argparse.ArgumentTypeError("Value can't be negative")
+    return number
+
+
+def main():
+    parser = argparse.ArgumentParser(description="CSV-driven browser video recorder")
+    parser.add_argument("--csv", default="input.csv",
+                        help="Path to input CSV (default input.csv)")
+    parser.add_argument("--out", default=None,
+                        help="Derictory for video (default value in qscript)")
+    parser.add_argument("--server", default=None,
+                        help="URL, example: http://127.0.0.1:8000; "
+                             "if specified, each video is loaded and opened in the browser")
+    parser.add_argument("--view-seconds", type=non_negative_float, default=10,
+                        help="how many seconds should the browser be kept open during a preview; "
+                             "0 = before pressing Enter (default 10)")
+    args = parser.parse_args()
+
+    if args.server and not args.server.lower().startswith(("http://", "https://")):
+        parser.error("--server must start with http:// or https://")
+
+    if args.out:
+        qscript.PATH_TO_VIDEO_FOLDER = args.out
+
+    total = 0
+    saved = 0
+    uploaded = 0
+
+    with open(args.csv, newline="", encoding="utf-8-sig") as f:
+        reader = csv.DictReader(f, delimiter=";", quotechar='"')
+        for i, row in enumerate(reader, start=1):
+            total += 1
+            company = row.get("Company Name", "")
+            print("[%d] Processing: %s" % (i, company))
+            try:
+                path = qscript.CaptureVideo_Magento(
+                    row["URL"],
+                    row["Company Name"],
+                    row["Language"],
+                    row["Country"],
+                    row["Postcode"],
+                    row["City"],
+                    row["Street"],
+                    row["HouseNo"],
+                )
+            except Exception as e:
+                print("[%d] FAILED: %s" % (i, e), file=sys.stderr)
+                continue
+
+            if not path:
+                print("[%d] FAILED (video not saved)" % i, file=sys.stderr)
+                continue
+
+            saved += 1
+            print("[%d] Saved: %s" % (i, path))
+
+            if not args.server:
+                continue
+
+            try:
+                video_url = UploadVideo(args.server, path, company)
+                uploaded += 1
+                print("[%d] Uploaded: %s" % (i, video_url))
+            except Exception as e:
+                print("[%d] UPLOAD FAILED: %s" % (i, e), file=sys.stderr)
+                continue
+
+            try:
+                preview_video(video_url, args.view_seconds)
+            except Exception as e:
+                print("[%d] PREVIEW FAILED: %s" % (i, e), file=sys.stderr)
+
+    summary = "Done: %d of %d videos saved." % (saved, total)
     if args.server:
-        print(f"Uploaded: {upload_count}/{saved_count}")
+        summary += " Uploaded: %d of %d." % (uploaded, saved)
+    print(summary)
+
+    ok = saved == total and (not args.server or uploaded == saved)
+    return 0 if ok else 1
 
 
-if __name__ == 'main':
-    main()
+if __name__ == "__main__":
+    sys.exit(main())
