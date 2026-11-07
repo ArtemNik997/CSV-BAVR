@@ -165,3 +165,20 @@ def serve_media(filename):
     return send_from_directory(UPLOAD_DIR, filename)
 
 
+@app.route('/video', methods=['GET'])
+def list_videos():
+    db = get_db()
+    records = db.execute("SELECT * FROM videos ORDER BY updated at DESC")
+
+    videos_list = []
+    for record in records:
+        videos_list.append({
+            "id": record['id'],
+            "company_name": record['company_name'],
+            "file_path": record['file_path'],
+            "video_url": record['video_url'],
+            "created_at": record['created_at'],
+            "updated_at": record['updated_at']
+        })
+        
+    return jsonify(videos_list), 200
