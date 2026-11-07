@@ -74,3 +74,65 @@ def make_filename(company_name, original_filename):
 
 def build_video_url(filename):
     return f"{request.host_url}media/{quote(filename)}"
+
+
+@app.route('/upload', methods=['POST'])
+def upload_video():
+    if 'file' not in request.files:
+        return jsonify({"error": "No file provided"}), 400
+
+    file = request.files['file']
+    company_name = request.form.get('company_name', '').strip()
+
+    if not company_name:
+        return jsonify({"error": "Company name is required"}), 400
+
+    if file.filename == '':
+            return jsonify({"error": "Empty filename"}), 400
+
+    filename = make_filename(company_name, file.filename)
+    dest_path = os.path.join(UPLOAD_DIR, filename)
+
+    temp_path = dest_path + '.part'
+    try:
+        file.save(temp_path)
+        os.replace(temp_path, dest_path)
+    except Exception as e:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        return jsonify({"error": f"Faild to save file: {str(e)}"}), 500
+
+    video_url = build_video_url(filename)
+    abs_file_path = os.path.abspath(dest_path)
+
+    db = get_db()
+    try:
+        old_record = db.execute(
+            "SELECT file_path FROM videos WHERE company_name = ?",
+            (company_name,)
+        ).fetchone()
+
+        if old_record and old_record['file_path'] != abs_file_path:
+            try:
+                os.remove(old_record['file_path'])
+            except OSError:
+                pass
+
+        db.execute("""
+            INSERT INTO videos (company_name, file_path, video_url)
+            VALUES (?, ?, ?)
+            ON CONFLICT(company_name) DO UPDATE SET
+                file_path = excluded.file_path,
+                video_url = excluded.video_url,
+                updated_at = datetime('now')
+        """, (company_name, abs_file_path, video_url))
+
+        db.commit
+    except Exception as e:
+        db.rollback()
+        return jsonify({"error": f"Database error: {str(e)}"}), 500
+
+    return jsonify({
+        "company_name": company_name,
+        "video_url": video_url
+    }), 200
