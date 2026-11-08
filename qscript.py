@@ -372,7 +372,8 @@ def _run_scenario(page, url, company_name, city):
     while not ok and "/home-error/" not in page.url and retries < 2:
         retries += 1
         print("[WARN] %s: search page error, retry %d/2" % (company_name, retries))
-        _pause(2.0)
+        ShowCallout("Search page error, reloading (%d/2)" % retries, fade=500, hold=1500)
+        _pause(2.5)
         page.reload(wait_until="domcontentloaded", timeout=30000)
         _wait_load(page)
         ok = _wait_for_results(page, timeout_s=15)
