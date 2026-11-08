@@ -223,3 +223,8 @@ __marimo__/
 .streamlit/secrets.toml
 
 # Custom
+/video
+/uploads/
+videos.db
+videos.db-wal
+videos.db-shm

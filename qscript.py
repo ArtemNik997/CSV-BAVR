@@ -249,7 +249,7 @@ def _element_center(page, selector, timeout=30000):
                 continue
             raise
         time.sleep(0.3)
-    raise RuntimeError("Не удалось получить координаты элемента %s: %s" % (selector, last_err))
+    raise RuntimeError("Failed to obtain element's coordinates %s: %s" % (selector, last_err))
 
 
 def _click_here(page):
@@ -301,7 +301,7 @@ def _debug_dump(page, company_name):
         )
         print("[DEBUG] Page text: %s" % str(text).replace("\n", " "))
     except Exception as e:
-        print("[DEBUG] Не удалось прочитать страницу: %s" % e)
+        print("[DEBUG] Failed to process page: %s" % e)
     if not _debug_enabled():
         return
     try:
@@ -310,7 +310,7 @@ def _debug_dump(page, company_name):
         page.screenshot(path=shot)
         print("[DEBUG] Screenshot: %s" % shot)
     except Exception as e:
-        print("[DEBUG] Не удалось сохранить скриншот: %s" % e)
+        print("[DEBUG] Failed to save screenshot: %s" % e)
 
 
 def _launch_kwargs():
@@ -367,13 +367,27 @@ def _run_scenario(page, url, company_name, city):
         page.keyboard.press("Enter")
 
     _wait_load(page)
-    if not _wait_for_results(page):
+    ok = _wait_for_results(page, timeout_s=15)
+    retries = 0
+    while not ok and "/home-error/" not in page.url and retries < 2:
+        retries += 1
+        print("[WARN] %s: search page error, retry %d/2" % (company_name, retries))
+        _pause(2.0)
+        page.reload(wait_until="domcontentloaded", timeout=30000)
+        _wait_load(page)
+        ok = _wait_for_results(page, timeout_s=15)
+    if not ok:
         _debug_dump(page, company_name)
         if "/home-error/" in page.url:
-            raise RuntimeError("DuckDuckGo заблокировал автоматический запрос (страница ошибки)")
-        raise RuntimeError("Результаты поиска не появились")
+            raise RuntimeError("DuckDuckGo blocked an automated request (error page)")
+        raise RuntimeError("No results obtained")
     _restore_cursor(page, cur)
-    _pause(0.8)
+    try:
+        ShowCallout("Waiting for page to load", hold=1000)
+        page.wait_for_load_state("networkidle", timeout=10000)
+    except PlaywrightError:
+        pass
+    _pause(2.0)
     ShowCallout("Opening the first result", hold=1000)
 
     rx, ry = _element_center(page, SEL_FIRST_RESULT)
@@ -437,7 +451,7 @@ def CaptureVideo_Magento(
                     if os.path.exists(failed):
                         os.remove(failed)
                     shutil.move(src, failed)
-                    print("[DEBUG] Видео сбоя: %s" % failed)
+                    print("[DEBUG] Failed video: %s" % failed)
                 else:
                     os.remove(src)
             except OSError:
@@ -454,5 +468,5 @@ def CaptureVideo_Magento(
             return None
         return dst
     except Exception as e:
-        print("[ERROR] %s: не удалось сохранить видео: %s" % (company_name, e))
+        print("[ERROR] %s: failed to save video: %s" % (company_name, e))
         return None
