@@ -24,7 +24,10 @@ def preview_video(video_url, view_seconds):
                 time.sleep(view_seconds)
             else:
                 try:
-                    input("Нажмите Enter, чтобы закрыть браузер... ")
+                    input(
+                        f"Video demonstration is opened in browser at {video_url}\n"
+                        "Press Enter in this terminal to close the browser... "
+                    )
                 except EOFError:
                     pass
         finally:
