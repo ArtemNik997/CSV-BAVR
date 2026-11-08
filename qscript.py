@@ -367,7 +367,16 @@ def _run_scenario(page, url, company_name, city):
         page.keyboard.press("Enter")
 
     _wait_load(page)
-    if not _wait_for_results(page):
+    ok = _wait_for_results(page, timeout_s=15)
+    retries = 0
+    while not ok and "/home-error/" not in page.url and retries < 2:
+        retries += 1
+        print("[WARN] %s: search page error, retry %d/2" % (company_name, retries))
+        _pause(2.0)
+        page.reload(wait_until="domcontentloaded", timeout=30000)
+        _wait_load(page)
+        ok = _wait_for_results(page, timeout_s=15)
+    if not ok:
         _debug_dump(page, company_name)
         if "/home-error/" in page.url:
             raise RuntimeError("DuckDuckGo blocked an automated request (error page)")
