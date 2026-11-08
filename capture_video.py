@@ -49,13 +49,13 @@ def main():
     parser.add_argument("--csv", default="input.csv",
                         help="Path to input CSV (default input.csv)")
     parser.add_argument("--out", default=None,
-                        help="Derictory for video (default value in qscript)")
+                        help="Directory for video (default value in qscript)")
     parser.add_argument("--server", default=None,
                         help="URL, example: http://127.0.0.1:8000; "
                              "if specified, each video is loaded and opened in the browser")
     parser.add_argument("--view-seconds", type=non_negative_float, default=10,
                         help="how many seconds should the browser be kept open during a preview; "
-                             "0 = before pressing Enter (default 10)")
+                             "0 = until Enter is pressed (default 10)")
     args = parser.parse_args()
 
     if args.server and not args.server.lower().startswith(("http://", "https://")):

@@ -40,7 +40,6 @@ def init_db():
     conn.close()
 
 def get_db():
-    """Получает соединение с БД для текущего запроса."""
     if 'db' not in g:
         g.db = sqlite3.connect(DB_PATH, timeout=30)
         g.db.row_factory = sqlite3.Row
@@ -48,7 +47,6 @@ def get_db():
 
 @app.teardown_appcontext
 def close_db(exception):
-    """Закрывает соединение с БД после завершения запроса."""
     db = g.pop('db', None)
     if db is not None:
         db.close()
@@ -92,10 +90,10 @@ def upload_video():
         return jsonify({"error": "Company name is required"}), 400
 
     if file.filename == '':
-            return jsonify({"error": "Empty filename"}), 400
+        return jsonify({"error": "Empty filename"}), 400
 
     db = get_db()
-    filename = make_filename(db,company_name, file.filename)
+    filename = make_filename(db, company_name, file.filename)
     dest_path = os.path.join(UPLOAD_DIR, filename)
 
     temp_path = dest_path + '.part'
@@ -105,7 +103,7 @@ def upload_video():
     except Exception as e:
         if os.path.exists(temp_path):
             os.remove(temp_path)
-        return jsonify({"error": f"Faild to save file: {str(e)}"}), 500
+        return jsonify({"error": f"Failed to save file: {str(e)}"}), 500
 
     video_url = build_video_url(filename)
     abs_file_path = os.path.abspath(dest_path)
