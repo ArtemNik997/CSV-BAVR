@@ -159,13 +159,13 @@ def upload_video():
         with db.cursor() as cur:
             cur.execute(
                 """
-                    INSERT INTO videos (company_name, file_path, video_url)
-                    VALUES (?, ?, ?)
-                    ON CONFLICT(company_name) DO UPDATE SET
-                        file_path = excluded.file_path,
-                        video_url = excluded.video_url,
-                        updated_at = datetime('now')
-            """,
+                INSERT INTO videos (company_name, file_path, video_url)
+                VALUES (%s, %s, %s)
+                ON CONFLICT(company_name) DO UPDATE SET
+                    file_path = EXCLUDED.file_path,
+                    video_url = EXCLUDED.video_url,
+                    updated_at = NOW()
+                """,
                 (company_name, abs_file_path, video_url),
             )
 
@@ -214,7 +214,7 @@ def serve_media(filename):
 def list_videos():
     db = get_db()
     with db.cursor() as cur:
-        cur = db.execute("SELECT * FROM videos ORDER BY updated_at DESC")
+        cur.execute("SELECT * FROM videos ORDER BY updated_at DESC")
         records = cur.fetchall()
 
     videos_list = []
