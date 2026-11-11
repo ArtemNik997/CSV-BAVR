@@ -1,0 +1,13 @@
+.git
+.gitignore
+.gitattributes
+.env
+.venv
+venv
+/__pycache__
+/*.pyc
+video/
+uploads/
+videos.db
+videos.db-wal
+videos.db-shm
