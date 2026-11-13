@@ -65,3 +65,108 @@ def map_to_video(x, y, viewport, video_size):
     px = min(max(x * w / vw, 0.0), float(w))
     py = min(max(y * h / vh, 0.0), float(h))
     return px, py
+
+
+def _fmt(v):
+    return ("%.6f" % v).rstrip("0").rstrip(".") or "0"
+
+
+def _num(value):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError("Number expected, got %r" % (value,))
+    v = float(value)
+    if not math.isfinite(v):
+        raise ValueError("Finite number expected")
+    return v
+
+
+def normalize_events(raw):
+    if not isinstance(raw, list):
+        raise SidecarError("'events' must be a list")
+
+    parsed = []
+    for i, item in enumerate(raw):
+        try:
+            if not isinstance(item, dict):
+                raise ValueError("not an object")
+            t, x, y = _num(item["t"]), _num(item["x"]), _num(item["y"])
+            if t < 0:
+                raise ValueError("negative t")
+            typ = item.get("type")
+            if typ is not None and typ not in ("in", "out"):
+                raise ValueError("bad type %r" % (typ,))
+        except (KeyError, ValueError) as e:
+            log.warning("events[%d] skipped: %s", i, e)
+            continue
+        parsed.append((t, i, x, y, typ))
+
+    parsed.sort(key=lambda p: (p[0], p[1]))
+
+    events, state = [], "out"
+    for t, i, x, y, typ in parsed:
+        want = "in" if state == "out" else "out"
+        if typ is None:
+            typ = want
+        elif typ != want:
+            log.warning(
+                "events[%d] skipped: redundant '%s' while zoom is '%s'", i, typ, state
+            )
+            continue
+        events.append(Event(t, x, y, typ))
+        state = typ
+    return events
+
+
+def _setting(data, key, default, lo, hi):
+    try:
+        v = _num(data.get(key, default))
+    except ValueError as e:
+        raise SidecarError("%s: %s" % (key, e)) from e
+    if not lo <= v <= hi:
+        raise SidecarError("%s must be in [%s, %s], got %s" % (key, lo, hi, v))
+    return v
+
+
+def parse_sidecar(data):
+    if not isinstance(data, dict):
+        raise SidecarError("sidecar must be a JSON object")
+
+    vp = data.get("viewport")
+    if vp is None:
+        width, height = DEFAULT_VIEWPORT
+    elif isinstance(vp, dict):
+        try:
+            width = int(_num(vp.get("width", DEFAULT_VIEWPORT[0])))
+            height = int(_num(vp.get("height", DEFAULT_VIEWPORT[1])))
+        except ValueError as e:
+            raise SidecarError("viewport: %s" % e) from e
+        if width <= 0 or height <= 0:
+            raise SidecarError("viewport sizes must be positive")
+    else:
+        raise SidecarError("'viewport' must be an object")
+
+    return Sidecar(
+        viewport=(width, height),
+        fps=_setting(data, "fps", DEFAULT_FPS, 1, 240),
+        zoom_factor=_setting(data, "zoom_factor", DEFAULT_ZOOM_FACTOR, 1, MAX_ZOOM),
+        ramp_sec=_setting(data, "ramp_sec", DEFAULT_RAMP_SEC, 0, 10),
+        events=tuple(normalize_events(data.get("events", []))),
+    )
+
+
+def load_sidecar(path):
+    try:
+        with open(path, "r", encoding="utf-8-sig") as f:
+            data = json.load(f)
+    except json.JSONDecodeError as e:
+        raise SidecarError("invalid JSON in %s: %s" % (path, e)) from e
+    return parse_sidecar(data)
+
+
+def find_sidecar(video_path):
+    """Ищет <video>.zoom.json, затем <video без расширения>.zoom.json."""
+    stem, _ = os.path.splitext(video_path)
+    for p in (video_path + ".zoom.json", stem + ".zoom.json"):
+        if os.path.isfile(p):
+            return p
+    return None
