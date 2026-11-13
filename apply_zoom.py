@@ -194,3 +194,60 @@ def build_segments(events, fps, ramp_sec, viewport, video_size=None):
         segments.append(Segment(start, end, cx, cy))
         free_from = end + r
     return segments
+
+
+def _ease_expr(frame_start, r):
+    u = "min(1,max(0,(on-%d)/%d))" % (frame_start, r)
+    return "(%s*%s*(3-2*%s))" % (u, u, u)
+
+
+def zoom_expr(segments, zoom_factor, r):
+    if not segments:
+        return "1"
+    parts = []
+    for s in segments:
+        rise = _ease_expr(s.start, r)
+        parts.append(
+            rise if s.end is None else "(%s-%s)" % (rise, _ease_expr(s.end, r))
+        )
+    return "1+%s*(%s)" % (_fmt(zoom_factor - 1.0), "+".join(parts))
+
+
+def _center_expr(segments, r, attr):
+    expr = "0.5"
+    for s in reversed(segments):
+        end = OPEN_END if s.end is None else s.end + r
+        expr = "if(between(on,%d,%d),%s,%s)" % (
+            s.start,
+            end,
+            _fmt(getattr(s, attr)),
+            expr,
+        )
+    return expr
+
+
+def position_expr(segments, r, axis):
+    size = "iw" if axis == "x" else "ih"
+    center = _center_expr(segments, r, "cx" if axis == "x" else "cy")
+    return "max(0,min((%s)*%s-%s/zoom/2,%s-%s/zoom))" % (center, size, size, size, size)
+
+
+def build_zoompan_filter(segments, zoom_factor, ramp_sec, fps, out_size):
+    r = ramp_frames(ramp_sec, fps)
+    w, h = out_size
+    return "zoompan=z='%s':x='%s':y='%s':d=1:s=%dx%d:fps=%s" % (
+        zoom_expr(segments, zoom_factor, r),
+        position_expr(segments, r, "x"),
+        position_expr(segments, r, "y"),
+        w,
+        h,
+        _fmt(fps),
+    )
+
+
+def build_filter(sc, video_size=None):
+    if not sc.events:
+        return None
+    size = video_size or sc.viewport
+    segments = build_segments(sc.events, sc.fps, sc.ramp_sec, sc.viewport, size)
+    return build_zoompan_filter(segments, sc.zoom_factor, sc.ramp_sec, sc.fps, size)
