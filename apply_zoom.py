@@ -352,3 +352,149 @@ def build_command(ffmpeg, video_path, output_path, zoompan, fps, size):
         "webm",
         output_path,
     ]
+
+
+_SAFE_ARG = re.compile(r"^[\w@%+=:,./\\-]+$")
+
+
+def format_command(cmd):
+    """Команда одной строкой для предпросмотра (--dry-run)."""
+    return " ".join(
+        a if _SAFE_ARG.match(a) else '"%s"' % a.replace('"', '\\"') for a in cmd
+    )
+
+
+def _remove_quietly(path):
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+
+
+def run_ffmpeg(cmd, tmp_path, final_path, timeout=None):
+    try:
+        proc = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as e:
+        _remove_quietly(tmp_path)
+        raise FfmpegError("ffmpeg timed out after %s s" % timeout) from e
+    except OSError as e:
+        raise FfmpegError("cannot run ffmpeg: %s" % e) from e
+
+    if proc.returncode != 0:
+        _remove_quietly(tmp_path)
+        tail = (proc.stderr or "").strip()[-1500:]
+        raise FfmpegError("ffmpeg failed (exit code %d):\n%s" % (proc.returncode, tail))
+    if not os.path.isfile(tmp_path) or os.path.getsize(tmp_path) == 0:
+        _remove_quietly(tmp_path)
+        raise FfmpegError("ffmpeg produced an empty file")
+    os.replace(tmp_path, final_path)  # результат появляется сразу целиком
+
+
+def process_video(
+    video_path,
+    sidecar_path=None,
+    output_path=None,
+    ffmpeg="ffmpeg",
+    dry_run=False,
+    timeout=None,
+):
+    if not os.path.isfile(video_path):
+        raise FileNotFoundError("video not found: %s" % video_path)
+
+    output_path = output_path or default_output_path(video_path)
+    if os.path.abspath(output_path) == os.path.abspath(video_path):
+        raise ValueError("output must differ from the input video")
+
+    if sidecar_path:
+        if not os.path.isfile(sidecar_path):
+            raise FileNotFoundError("sidecar not found: %s" % sidecar_path)
+    else:
+        sidecar_path = find_sidecar(video_path)
+    sc = load_sidecar(sidecar_path) if sidecar_path else None
+
+    # нет сайдкара или событий: видео копируется без изменений
+    if sc is None or not sc.events:
+        if not dry_run:
+            os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+            shutil.copy2(video_path, output_path)
+        return Result(output_path, None, True)
+
+    if not dry_run:
+        ffmpeg = resolve_ffmpeg(ffmpeg)
+    size = probe_size(ffmpeg, video_path) or sc.viewport
+    zoompan = build_filter(sc, size)
+
+    if dry_run:
+        cmd = build_command(ffmpeg, video_path, output_path, zoompan, sc.fps, size)
+        return Result(output_path, cmd, False)
+
+    os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+    tmp_path = output_path + ".part"
+    cmd = build_command(ffmpeg, video_path, tmp_path, zoompan, sc.fps, size)
+    run_ffmpeg(cmd, tmp_path, output_path, timeout)
+    return Result(output_path, cmd, False)
+
+
+def build_parser():
+    p = argparse.ArgumentParser(
+        description="Apply Camtasia-style zoom to a recorded video"
+    )
+    p.add_argument("--video", required=True, help="input .webm")
+    p.add_argument(
+        "--sidecar",
+        default=None,
+        help="zoom sidecar (default: <video>.zoom.json next to the video)",
+    )
+    p.add_argument(
+        "--output", default=None, help="output .webm (default: <video>.zoomed.webm)"
+    )
+    p.add_argument(
+        "--ffmpeg",
+        default=os.environ.get("FFMPEG_BIN") or "ffmpeg",
+        help="path to the ffmpeg binary (default: ffmpeg from PATH)",
+    )
+    p.add_argument(
+        "--dry-run", action="store_true", help="print the ffmpeg command and do nothing"
+    )
+    return p
+
+
+def main(argv=None):
+    args = build_parser().parse_args(argv)
+    logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
+    try:
+        result = process_video(
+            args.video,
+            sidecar_path=args.sidecar,
+            output_path=args.output,
+            ffmpeg=args.ffmpeg,
+            dry_run=args.dry_run,
+        )
+    except (OSError, ValueError, FfmpegError) as e:  # SidecarError это ValueError
+        print("ERROR: %s" % e, file=sys.stderr)
+        return 1
+
+    if args.dry_run:
+        if result.command:
+            print(format_command(result.command))
+        else:
+            print(
+                "No zoom events: the video would be copied unchanged to %s"
+                % result.output
+            )
+    elif result.copied:
+        print("No zoom events, copied unchanged: %s" % result.output)
+    else:
+        print("Saved: %s" % result.output)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
