@@ -170,3 +170,27 @@ def find_sidecar(video_path):
         if os.path.isfile(p):
             return p
     return None
+
+
+def build_segments(events, fps, ramp_sec, viewport, video_size=None):
+    video_size = video_size or viewport
+    r = ramp_frames(ramp_sec, fps)
+    segments, free_from, i = [], 0, 0
+    while i < len(events):
+        ev_in = events[i]
+        ev_out = events[i + 1] if i + 1 < len(events) else None
+        i += 2
+
+        px, py = map_to_video(ev_in.x, ev_in.y, viewport, video_size)
+        cx, cy = px / video_size[0], py / video_size[1]
+
+        start = max(to_frame(ev_in.t, fps), free_from)
+
+        if ev_out is None:
+            segments.append(Segment(start, None, cx, cy))
+            break
+
+        end = max(to_frame(ev_out.t, fps), start + r)
+        segments.append(Segment(start, end, cx, cy))
+        free_from = end + r
+    return segments
