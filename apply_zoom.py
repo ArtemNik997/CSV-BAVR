@@ -4,6 +4,11 @@ import json
 import logging
 import math
 import os
+import argparse
+import re
+import shutil
+import subprocess
+import sys
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
@@ -15,6 +20,8 @@ DEFAULT_ZOOM_FACTOR = 2.0
 DEFAULT_RAMP_SEC = 0.5
 MAX_ZOOM = 10.0
 OPEN_END = 10**9
+SUPERSAMPLE = 2
+VP9_CRF = 32
 
 
 class SidecarError(ValueError):
@@ -273,3 +280,14 @@ def crop_at_frame(segments, n, zoom_factor, r, iw, ih):
     x = max(0.0, min(cx * iw - iw / z / 2, iw - iw / z))
     y = max(0.0, min(cy * ih - ih / z / 2, ih - ih / z))
     return z, x, y
+
+
+class FfmpegError(RuntimeError):
+    """ffmpeg is missing or executed with error."""
+
+
+@dataclass(frozen=True)
+class Result:
+    output: str
+    command: Optional[list]
+    copied: bool
