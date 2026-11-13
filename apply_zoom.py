@@ -291,3 +291,64 @@ class Result:
     output: str
     command: Optional[list]
     copied: bool
+
+
+def default_output_path(video_path):
+    stem, _ = os.path.splitext(video_path)
+    return stem + ".zoomed.webm"
+
+
+def resolve_ffmpeg(ffmpeg):
+    path = shutil.which(ffmpeg)
+    if path is None:
+        raise FfmpegError(
+            "ffmpeg not found (%r). Install ffmpeg or pass --ffmpeg <path>" % ffmpeg
+        )
+    return path
+
+
+def probe_size(ffmpeg, video_path):
+    try:
+        proc = subprocess.run(
+            [ffmpeg, "-hide_banner", "-nostdin", "-i", video_path],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            encoding="utf-8",
+            errors="replace",
+        )
+    except OSError:
+        return None
+    m = re.search(r"Video:.*?,\s*(\d{2,5})x(\d{2,5})", proc.stderr or "")
+    return (int(m.group(1)), int(m.group(2))) if m else None
+
+
+def build_command(ffmpeg, video_path, output_path, zoompan, fps, size):
+    w, h = size
+    chain = ["fps=%s" % _fmt(fps)]  # постоянная частота кадров: on == номер кадра
+    if SUPERSAMPLE > 1:
+        chain.append("scale=%d:%d" % (w * SUPERSAMPLE, h * SUPERSAMPLE))
+    chain += [zoompan, "format=yuv420p"]
+    return [
+        ffmpeg,
+        "-hide_banner",
+        "-nostdin",
+        "-v",
+        "error",
+        "-y",
+        "-i",
+        video_path,
+        "-vf",
+        ",".join(chain),
+        "-c:v",
+        "libvpx-vp9",
+        "-b:v",
+        "0",
+        "-crf",
+        str(VP9_CRF),
+        "-row-mt",
+        "1",
+        "-an",
+        "-f",
+        "webm",
+        output_path,
+    ]
