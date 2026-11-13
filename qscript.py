@@ -4,6 +4,7 @@ import random
 import re
 import shutil
 import time
+import json
 
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import sync_playwright
@@ -243,7 +244,68 @@ def _is_nav_error(err):
 
 
 def _pause(seconds):
+    """Пауза, во время которой Playwright обрабатывает события страницы (F5, __zoomAt)."""
+    page = _CURRENT_PAGE
+    if page is not None:
+        try:
+            page.wait_for_timeout(seconds * 1000.0)
+            return
+        except PlaywrightError:
+            pass
     time.sleep(seconds)
+
+
+def ZoomAt(x, y, page=None):
+    """Переключает зум так же, как F5, но в точке (x, y) вьюпорта. Возвращает 'in' или 'out'."""
+    page = page or _CURRENT_PAGE
+    if page is None:
+        return None
+    try:
+        # один вызов без повторов: повтор добавил бы лишнее событие и перевернул бы состояние
+        return page.evaluate("([x, y]) => window.__zoomAt(x, y)", [x, y])
+    except PlaywrightError as e:
+        print("[WARN] zoom toggle failed: %s" % e)
+        return None
+
+
+def _scenario_zoom(x, y):
+    if os.environ.get(ENV_AUTO_ZOOM, "1").strip().lower() in ("0", "false", "no"):
+        return
+    ZoomAt(x, y)
+
+
+def _remove_quietly(path):
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+
+
+def write_zoom_sidecar(video_path, events):
+    """Пишет <video>.zoom.json только если есть хотя бы одно событие."""
+    sidecar_path = video_path + ".zoom.json"
+    if not events:
+        _remove_quietly(sidecar_path)  # убираем устаревший сайдкар от прошлого запуска
+        return None
+    data = {
+        "viewport": {"width": VIDEO_SIZE["width"], "height": VIDEO_SIZE["height"]},
+        "fps": VIDEO_FPS,
+        "zoom_factor": ZOOM_FACTOR,
+        "ramp_sec": ZOOM_RAMP_SEC,
+        "events": list(events),
+    }
+    tmp_path = sidecar_path + ".part"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    os.replace(tmp_path, sidecar_path)
+    return sidecar_path
+
+
+def _finish_zoom_sidecar(video_path, company_name):
+    try:
+        write_zoom_sidecar(video_path, _ZOOM_EVENTS)
+    except OSError as e:
+        print("[WARN] %s: failed to write zoom sidecar: %s" % (company_name, e))
 
 
 def _debug_enabled():
