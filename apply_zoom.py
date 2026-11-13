@@ -44,3 +44,16 @@ class Segment:
     end: Optional[int]
     cx: float
     cy: float
+
+
+def to_frame(t, fps):
+    return int(t * fps + 0.5)
+
+
+def ramp_frames(ramp_sec, fps):
+    return max(1, int(ramp_sec * fps + 0.5))
+
+
+def ease(u):
+    u = min(1.0, max(0.0, u))
+    return u * u * (3.0 - 2.0 * u)
