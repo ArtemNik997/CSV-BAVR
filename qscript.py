@@ -28,6 +28,43 @@ ZOOM_RAMP_SEC = 0.5
 ZOOM_TIME_OFFSET = 0.0
 
 _CURRENT_PAGE = None
+_ZOOM_EVENTS = []
+_ZOOM_T0 = None
+
+
+def _reset_zoom_clock():
+    global _ZOOM_T0
+    del _ZOOM_EVENTS[:]
+    _ZOOM_T0 = None
+
+
+def _start_zoom_clock():
+    global _ZOOM_T0
+    _ZOOM_T0 = time.time()
+
+
+def make_zoom_event(events, t0, epoch_sec, x, y):
+    typ = "in" if len(events) % 2 == 0 else "out"
+    t = round(epoch_sec - t0 + ZOOM_TIME_OFFSET, 3)
+    t = max(t, events[-1]["t"] if events else 0.0)  # t не убывает и не отрицателен
+    events.append(
+        {"t": t, "x": round(float(x), 1), "y": round(float(y), 1), "type": typ}
+    )
+    return typ
+
+
+def _on_zoom_event(payload):
+    try:
+        return make_zoom_event(
+            _ZOOM_EVENTS,
+            _ZOOM_T0,
+            float(payload["ts"]) / 1000.0,
+            payload["x"],
+            payload["y"],
+        )
+    except (KeyError, TypeError, ValueError):
+        return ""
+
 
 INIT_SCRIPT = r"""
 (() => {
