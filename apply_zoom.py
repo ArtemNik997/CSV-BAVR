@@ -57,3 +57,11 @@ def ramp_frames(ramp_sec, fps):
 def ease(u):
     u = min(1.0, max(0.0, u))
     return u * u * (3.0 - 2.0 * u)
+
+
+def map_to_video(x, y, viewport, video_size):
+    vw, vh = viewport
+    w, h = video_size
+    px = min(max(x * w / vw, 0.0), float(w))
+    py = min(max(y * h / vh, 0.0), float(h))
+    return px, py
