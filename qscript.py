@@ -19,6 +19,13 @@ SEL_FIRST_RESULT = 'a[data-testid="result-title-a"]'
 ENV_HEADLESS = "QS_HEADLESS"
 ENV_CHANNEL = "QS_BROWSER_CHANNEL"
 ENV_DEBUG = "QS_DEBUG"
+ENV_ZOOM_RING = "QS_ZOOM_RING"
+ENV_AUTO_ZOOM = "QS_AUTO_ZOOM"
+
+VIDEO_FPS = 25
+ZOOM_FACTOR = 2.0
+ZOOM_RAMP_SEC = 0.5
+ZOOM_TIME_OFFSET = 0.0
 
 _CURRENT_PAGE = None
 
@@ -190,8 +197,15 @@ def _restore_cursor(page, cur):
     )
 
 
-def ShowCallout(text, bgColor="yellow", textColor="black", fade=2000,
-                hold=1500, wait=False, page=None):
+def ShowCallout(
+    text,
+    bgColor="yellow",
+    textColor="black",
+    fade=2000,
+    hold=1500,
+    wait=False,
+    page=None,
+):
     page = page or _CURRENT_PAGE
     if page is None:
         return
@@ -249,7 +263,9 @@ def _element_center(page, selector, timeout=30000):
                 continue
             raise
         time.sleep(0.3)
-    raise RuntimeError("Failed to obtain element's coordinates %s: %s" % (selector, last_err))
+    raise RuntimeError(
+        "Failed to obtain element's coordinates %s: %s" % (selector, last_err)
+    )
 
 
 def _click_here(page):
@@ -372,7 +388,9 @@ def _run_scenario(page, url, company_name, city):
     while not ok and "/home-error/" not in page.url and retries < 2:
         retries += 1
         print("[WARN] %s: search page error, retry %d/2" % (company_name, retries))
-        ShowCallout("Search page error, reloading (%d/2)" % retries, fade=500, hold=1500)
+        ShowCallout(
+            "Search page error, reloading (%d/2)" % retries, fade=500, hold=1500
+        )
         _pause(2.5)
         page.reload(wait_until="domcontentloaded", timeout=30000)
         _wait_load(page)
@@ -448,7 +466,9 @@ def CaptureVideo_Magento(
         if src and os.path.exists(src):
             try:
                 if _debug_enabled():
-                    failed = os.path.join(folder, _safe_name(company_name) + "_FAILED.webm")
+                    failed = os.path.join(
+                        folder, _safe_name(company_name) + "_FAILED.webm"
+                    )
                     if os.path.exists(failed):
                         os.remove(failed)
                     shutil.move(src, failed)
