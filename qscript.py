@@ -507,6 +507,7 @@ def _run_scenario(page, url, company_name, city):
 
     sx, sy = _element_center(page, SEL_SEARCH_BOX)
     _move_smooth(page, cur, sx, sy)
+    _scenario_zoom(sx, sy)
     _pause(0.3)
 
     _click_here(page)
@@ -515,6 +516,7 @@ def _run_scenario(page, url, company_name, city):
     query = "Magento developer in %s" % city if city else "Magento developer"
     _type_human(page, query)
     _pause(0.8)
+    _scenario_zoom(cur["x"], cur["y"])
 
     try:
         bx, by = _element_center(page, SEL_SEARCH_BUTTON, timeout=3000)
@@ -553,10 +555,12 @@ def _run_scenario(page, url, company_name, city):
 
     rx, ry = _element_center(page, SEL_FIRST_RESULT)
     _move_smooth(page, cur, rx, ry)
+    _scenario_zoom(rx, ry)
     _pause(0.4)
     _click_here(page)
 
     _wait_load(page)
+    _scenario_zoom(rx, ry)
     _pause(3.5)
 
 
@@ -574,6 +578,8 @@ def CaptureVideo_Magento(
     os.makedirs(folder, exist_ok=True)
     dst = os.path.join(folder, _safe_name(company_name) + ".webm")
 
+    _reset_zoom_clock()
+
     scenario_ok = False
     src = None
     try:
@@ -584,6 +590,14 @@ def CaptureVideo_Magento(
                 video = None
                 try:
                     context.add_init_script(INIT_SCRIPT)
+                    if os.environ.get(ENV_ZOOM_RING, "1").strip().lower() in (
+                        "0",
+                        "false",
+                        "no",
+                    ):
+                        context.add_init_script("window.__qsNoZoomRing = true;")
+                    context.expose_function("__zoomEmit", _on_zoom_event)
+                    _start_zoom_clock()
                     page = context.new_page()
                     video = page.video
                     try:
@@ -629,6 +643,7 @@ def CaptureVideo_Magento(
         shutil.move(src, dst)
         if os.path.getsize(dst) <= 0:
             return None
+        _finish_zoom_sidecar(dst, company_name)
         return dst
     except Exception as e:
         print("[ERROR] %s: failed to save video: %s" % (company_name, e))
