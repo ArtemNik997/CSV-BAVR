@@ -251,3 +251,25 @@ def build_filter(sc, video_size=None):
     size = video_size or sc.viewport
     segments = build_segments(sc.events, sc.fps, sc.ramp_sec, sc.viewport, size)
     return build_zoompan_filter(segments, sc.zoom_factor, sc.ramp_sec, sc.fps, size)
+
+
+def zoom_at_frame(segments, n, zoom_factor, r):
+    k = 0.0
+    for s in segments:
+        k += ease((n - s.start) / r)
+        if s.end is not None:
+            k -= ease((n - s.end) / r)
+    return 1.0 + (zoom_factor - 1.0) * k
+
+
+def crop_at_frame(segments, n, zoom_factor, r, iw, ih):
+    z = zoom_at_frame(segments, n, zoom_factor, r)
+    cx = cy = 0.5
+    for s in segments:
+        end = OPEN_END if s.end is None else s.end + r
+        if s.start <= n <= end:
+            cx, cy = s.cx, s.cy
+            break
+    x = max(0.0, min(cx * iw - iw / z / 2, iw - iw / z))
+    y = max(0.0, min(cy * ih - ih / z / 2, ih - ih / z))
+    return z, x, y
