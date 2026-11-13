@@ -91,6 +91,9 @@ INIT_SCRIPT = r"""
       width: max-content; max-width: 80vw; box-sizing: border-box; padding: 10px 18px;
       font: 16pt Arial, sans-serif; border: 1px solid #000; border-radius: 4px;
       opacity: 0; pointer-events: none; z-index: 2147483647; }
+    #__qs_zoomring { position: fixed; box-sizing: border-box; width: 64px; height: 64px;
+      border-radius: 50%; border: 5px solid #00c853; pointer-events: none;
+      z-index: 2147483645; transform: translate(-50%, -50%); }
   `;
 
   function place(x, y) {
@@ -140,6 +143,24 @@ INIT_SCRIPT = r"""
     anim.onfinish = () => el.remove();
   }
 
+  function showZoomRing(x, y, type) {
+    if (window.__qsNoZoomRing || !document.documentElement) return;
+    const el = document.createElement('div');
+    el.className = '__qs_zoomring';
+    el.style.left = x + 'px';
+    el.style.top = y + 'px';
+    el.style.borderColor = type === 'in' ? '#00c853' : '#f44336'; // зелёное = in, красное = out
+    document.documentElement.appendChild(el);
+    const anim = el.animate(
+        [
+        { transform: 'translate(-50%, -50%) scale(0.6)', opacity: 1 },
+        { transform: 'translate(-50%, -50%) scale(1.4)', opacity: 0 },
+        ],
+        { duration: 800, easing: 'ease-out', fill: 'forwards' },
+    );
+    anim.onfinish = () => el.remove();
+  }
+
   function hideCallout(fadeMs) {
     const el = document.getElementById('__qs_callout');
     if (!el) return;
@@ -173,6 +194,17 @@ INIT_SCRIPT = r"""
 
   window.addEventListener('mousemove', e => place(e.clientX, e.clientY), true);
   window.addEventListener('mousedown', e => ripple(e.clientX, e.clientY), true);
+  window.addEventListener(
+    'keydown',
+    (e) => {
+        if (e.key !== 'F5') return;
+        e.preventDefault(); // без этого F5 перезагрузит страницу
+        e.stopPropagation();
+        if (!e.repeat) window.__zoomAt(state.x, state.y);
+    },
+    true,
+  );
+
 
   window.__qs = {
     moveTo: place,
@@ -181,6 +213,17 @@ INIT_SCRIPT = r"""
     get x() { return state.x; },
     get y() { return state.y; },
   };
+
+  window.__zoomAt = function (x, y) {
+    const px = x === undefined || x === null ? state.x : x;
+    const py = y === undefined || y === null ? state.y : y;
+    if (typeof window.__zoomEmit !== 'function') return Promise.resolve('');
+    return window.__zoomEmit({ x: px, y: py, ts: Date.now() }).then((type) => {
+        if (type) showZoomRing(px, py, type);
+        return type;
+    });
+  };
+
 
   build();
   document.addEventListener('DOMContentLoaded', build);
