@@ -9,6 +9,9 @@ services:
       DB_NAME: ${POSTGRES_DB:-videos}
       DB_USER: ${POSTGRES_USER:-video_user}
       DB_PASSWORD: ${POSTGRES_PASSWORD:-video_pass}
+      AUTO_PROCESS: ${AUTO_PROCESS:-1}
+      ZOOM_WORKERS: ${ZOOM_WORKERS:-1}
+      ZOOM_TIMEOUT: ${ZOOM_TIMEOUT:-900}
     volumes:
       - uploads:/app/uploads
     depends_on:
