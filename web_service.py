@@ -387,7 +387,10 @@ def get_video_url():
     db = get_db()
     record = fetch_one(
         db,
-        "SELECT company_name, video_url FROM videos WHERE company_name = %s",
+        """
+        SELECT company_name, video_url, process_status, processed_video_url
+        FROM videos WHERE company_name = %s
+        """,
         (company_name,),
     )
 
@@ -397,15 +400,18 @@ def get_video_url():
                 {
                     "company_name": record["company_name"],
                     "video_url": record["video_url"],
+                    "process_status": record["process_status"],
+                    "processed_video_url": record["processed_video_url"],
                 }
             ),
             200,
         )
+
     else:
         return jsonify({"error": "Company not found"}), 404
 
 
-@app.route("/media/<filename>", methods=["GET"])
+@app.route("/media/<path:filename>", methods=["GET"])
 def serve_media(filename):
     return send_from_directory(UPLOAD_DIR, filename)
 
@@ -427,6 +433,13 @@ def list_videos():
                 "video_url": record["video_url"],
                 "created_at": record["created_at"].isoformat(),
                 "updated_at": record["updated_at"].isoformat(),
+                "process_status": record["process_status"],
+                "processed_video_url": record["processed_video_url"],
+                "processed_at": (
+                    record["processed_at"].isoformat()
+                    if record["processed_at"]
+                    else None
+                ),
             }
         )
 
