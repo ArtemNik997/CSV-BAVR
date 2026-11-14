@@ -86,6 +86,14 @@ def main():
         help="how many seconds should the browser be kept open during a preview; "
         "0 = until Enter is pressed (default 10)",
     )
+    parser.add_argument(
+        "--process-timeout",
+        type=non_negative_float,
+        default=300,
+        help="how many seconds to wait for server-side zoom processing "
+        "of each uploaded video; 0 = do not wait (default 300)",
+    )
+
     args = parser.parse_args()
 
     if args.server and not args.server.lower().startswith(("http://", "https://")):
