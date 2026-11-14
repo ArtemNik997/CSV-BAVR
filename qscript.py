@@ -255,17 +255,26 @@ def _pause(seconds):
     time.sleep(seconds)
 
 
-def ZoomAt(x, y, page=None):
+def ZoomAt(x, y, page=None, retries=4):
     """Переключает зум так же, как F5, но в точке (x, y) вьюпорта. Возвращает 'in' или 'out'."""
     page = page or _CURRENT_PAGE
     if page is None:
         return None
-    try:
-        # один вызов без повторов: повтор добавил бы лишнее событие и перевернул бы состояние
-        return page.evaluate("([x, y]) => window.__zoomAt(x, y)", [x, y])
-    except PlaywrightError as e:
-        print("[WARN] zoom toggle failed: %s" % e)
-        return None
+    for _ in range(retries):
+        before = len(_ZOOM_EVENTS)
+        try:
+            result = page.evaluate("([x, y]) => window.__zoomAt(x, y)", [x, y])
+            if result:
+                return result
+        except PlaywrightError as e:
+            if len(_ZOOM_EVENTS) > before:
+                return _ZOOM_EVENTS[-1]["type"]
+            if not _is_nav_error(e):
+                print("[WARN] zoom toggle failed: %s" % e)
+                return None
+        _pause(0.5)
+    print("[WARN] zoom toggle failed: no response after %d attempts" % retries)
+    return None
 
 
 def _scenario_zoom(x, y):
