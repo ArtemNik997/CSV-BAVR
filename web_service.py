@@ -446,6 +446,65 @@ def list_videos():
     return jsonify(videos_list), 200
 
 
+@app.route("/jobs/<int:video_id>/process", methods=["POST"])
+def start_job(video_id):
+    db = get_db()
+    try:
+        with db.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE videos
+                SET process_status = 'pending', process_error = NULL
+                WHERE id = %s AND process_status NOT IN ('pending', 'processing')
+                RETURNING id
+                """,
+                (video_id,),
+            )
+            started = cur.fetchone()
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        return jsonify({"error": f"Database error: {str(e)}"}), 500
+
+    if started:
+        submit_job(video_id)
+        return jsonify({"id": video_id, "status": "pending"}), 202
+
+    record = fetch_one(
+        db, "SELECT process_status FROM videos WHERE id = %s", (video_id,)
+    )
+    if record is None:
+        return jsonify({"error": "Job not found"}), 404
+    return jsonify({"id": video_id, "status": record["process_status"]}), 409
+
+
+@app.route("/jobs/<int:video_id>", methods=["GET"])
+def job_status(video_id):
+    db = get_db()
+    record = fetch_one(
+        db,
+        """
+        SELECT id, company_name, process_status, process_error, processed_video_url
+        FROM videos WHERE id = %s
+        """,
+        (video_id,),
+    )
+    if record is None:
+        return jsonify({"error": "Job not found"}), 404
+    return (
+        jsonify(
+            {
+                "id": record["id"],
+                "company_name": record["company_name"],
+                "status": record["process_status"],
+                "error": record["process_error"],
+                "processed_video_url": record["processed_video_url"],
+            }
+        ),
+        200,
+    )
+
+
 if __name__ == "__main__":
     init_db()
     app.run(host=HOST, port=PORT, threaded=True, debug=False)
