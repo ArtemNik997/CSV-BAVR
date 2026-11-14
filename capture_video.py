@@ -105,6 +105,8 @@ def main():
     total = 0
     saved = 0
     uploaded = 0
+    with_zoom = 0
+    processed = 0
 
     with open(args.csv, newline="", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f, delimiter=";", quotechar='"')
@@ -138,17 +140,41 @@ def main():
                 continue
 
             try:
-                from video_client import UploadVideo
+                from video_client import UploadVideoEx, find_zoom_sidecar
 
-                video_url = UploadVideo(args.server, path, company)
+                info = UploadVideoEx(args.server, path, company)
+                video_url = info["video_url"]
                 uploaded += 1
                 print("[%d] Uploaded: %s" % (i, video_url))
             except Exception as e:
                 print("[%d] UPLOAD FAILED: %s" % (i, e), file=sys.stderr)
                 continue
 
+            preview_url = video_url
+            if find_zoom_sidecar(path):
+                with_zoom += 1
+                try:
+                    processed_url = process_uploaded(
+                        args.server, info, args.process_timeout
+                    )
+                except Exception as e:
+                    print(
+                        "[%d] PROCESS FAILED: %s (previewing the original)" % (i, e),
+                        file=sys.stderr,
+                    )
+                else:
+                    if processed_url:
+                        processed += 1
+                        print("[%d] Processed: %s" % (i, processed_url))
+                        preview_url = processed_url
+                    else:
+                        print(
+                            "[%d] Processing started, not waiting (--process-timeout 0)"
+                            % i
+                        )
+
             try:
-                preview_video(video_url, args.view_seconds)
+                preview_video(preview_url, args.view_seconds)
             except Exception as e:
                 print("[%d] PREVIEW FAILED: %s" % (i, e), file=sys.stderr)
 
@@ -156,6 +182,8 @@ def main():
     if args.server:
         summary += " Uploaded: %d of %d." % (uploaded, saved)
     print(summary)
+    if args.server and with_zoom and args.process_timeout > 0:
+        print("Zoom processed: %d of %d." % (processed, with_zoom))
 
     ok = saved == total and (not args.server or uploaded == saved)
     return 0 if ok else 1
