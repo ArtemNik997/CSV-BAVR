@@ -2,7 +2,7 @@ import pytest
 
 import apply_zoom as az
 
-R = 13  # 0.5 с * 25 кадров/с = 12.5, округляется вверх
+R = 13
 
 
 def ev(t, x, y, typ):
@@ -20,7 +20,7 @@ def zoom(s, n, factor=2.0):
 SPEC_PAIR = [ev(3.0, 640, 360, "in"), ev(8.0, 640, 360, "out")]
 
 
-# ---------- рампа и easing ----------
+# ---------- ramp and easing ----------
 
 
 def test_ramp_frames_rounds_half_up():
@@ -53,7 +53,7 @@ def test_ease_is_flat_at_both_ends():
     assert 1 - az.ease(0.99) < 0.001
 
 
-# ---------- координаты мыши -> пиксели видео ----------
+# ---------- cursor coords -> video pixels ----------
 
 
 def test_map_is_identity_when_sizes_match():
@@ -78,7 +78,7 @@ def test_center_fraction_does_not_depend_on_video_size():
     assert (s[0].cx, s[0].cy) == (0.25, 0.25)
 
 
-# ---------- сегменты ----------
+# ---------- segments ----------
 
 
 def test_single_pair_from_spec():
@@ -109,7 +109,7 @@ def test_in_without_out_is_open_ended():
     assert segs([ev(3, 640, 360, "in")])[0].end is None
 
 
-# ---------- кривая зума ----------
+# ---------- zoom ramps ----------
 
 
 def test_zoom_ramps_in_holds_and_ramps_out():
@@ -161,7 +161,7 @@ def test_zero_ramp_is_valid_and_instant():
     assert az.zoom_at_frame(s, 76, 2.0, r) == pytest.approx(2.0)
 
 
-# ---------- кроп: центр на точке и зажим в кадре ----------
+# ---------- crop: center on the point and clamp ----------
 
 
 def test_crop_is_centered_on_the_point():
@@ -217,7 +217,7 @@ def test_each_pair_zooms_on_its_own_point():
     assert z_between == pytest.approx(1.0) and x_between == 0
 
 
-# ---------- строка фильтра zoompan ----------
+# ---------- filter string zoompan ----------
 
 
 def test_filter_contains_required_zoompan_options():
