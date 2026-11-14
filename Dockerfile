@@ -1,11 +1,14 @@
 FROM debian:bookworm-slim
 
 ENV DEBIAN_FRONTEND=noninteractive \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    FFMPEG_BIN=/usr/bin/ffmpeg
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        apache2 libapache2-mod-wsgi-py3 python3 python3-venv curl \
+        apache2 libapache2-mod-wsgi-py3 python3 python3-venv curl ffmpeg \
     && rm -rf /var/lib/apt/lists/*
+
+RUN ffmpeg -hide_banner -encoders 2>/dev/null | grep -q libvpx-vp9
 
 RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
@@ -14,7 +17,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY web_service.py app.wsgi ./
+COPY web_service.py apply_zoom.py app.wsgi ./
 COPY docker/apache/videos.conf /etc/apache2/sites-available/videos.conf
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 
