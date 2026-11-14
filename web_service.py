@@ -277,6 +277,7 @@ def run_job(video_id):
 
 
 @app.route("/upload", methods=["POST"])
+@app.route("/upload", methods=["POST"])
 def upload_video():
     if "file" not in request.files:
         return jsonify({"error": "No file provided"}), 400
@@ -289,6 +290,11 @@ def upload_video():
 
     if file.filename == "":
         return jsonify({"error": "Empty filename"}), 400
+
+    try:
+        zoom_sidecar = read_zoom_upload(request.files.get("zoom"))
+    except ValueError as e:
+        return jsonify({"error": f"Invalid zoom sidecar: {e}"}), 400
 
     db = get_db()
     filename = make_filename(db, company_name, file.filename)
@@ -305,10 +311,13 @@ def upload_video():
 
     video_url = build_video_url(filename)
     abs_file_path = os.path.abspath(dest_path)
+    status = "pending" if (zoom_sidecar is not None and AUTO_PROCESS) else "none"
 
     try:
         old_record = fetch_one(
-            db, "SELECT file_path FROM videos WHERE company_name = %s", (company_name,)
+            db,
+            "SELECT file_path, processed_file_path FROM videos WHERE company_name = %s",
+            (company_name,),
         )
 
         if old_record and old_record["file_path"] != abs_file_path:
@@ -320,22 +329,52 @@ def upload_video():
         with db.cursor() as cur:
             cur.execute(
                 """
-                INSERT INTO videos (company_name, file_path, video_url)
-                VALUES (%s, %s, %s)
+                INSERT INTO videos (company_name, file_path, video_url, zoom_sidecar, process_status)
+                VALUES (%s, %s, %s, %s, %s)
                 ON CONFLICT(company_name) DO UPDATE SET
                     file_path = EXCLUDED.file_path,
                     video_url = EXCLUDED.video_url,
+                    zoom_sidecar = EXCLUDED.zoom_sidecar,
+                    process_status = EXCLUDED.process_status,
+                    process_error = NULL,
+                    processed_file_path = NULL,
+                    processed_video_url = NULL,
+                    processed_at = NULL,
                     updated_at = NOW()
+                RETURNING id
                 """,
-                (company_name, abs_file_path, video_url),
+                (
+                    company_name,
+                    abs_file_path,
+                    video_url,
+                    Json(zoom_sidecar) if zoom_sidecar is not None else None,
+                    status,
+                ),
             )
+            video_id = cur.fetchone()["id"]
 
         db.commit()
     except Exception as e:
         db.rollback()
         return jsonify({"error": f"Database error: {str(e)}"}), 500
 
-    return jsonify({"company_name": company_name, "video_url": video_url}), 200
+    if old_record and old_record["processed_file_path"]:
+        _remove_quietly(old_record["processed_file_path"])  # старый результат устарел
+
+    if status == "pending":
+        submit_job(video_id)
+
+    return (
+        jsonify(
+            {
+                "company_name": company_name,
+                "video_url": video_url,
+                "id": video_id,
+                "process_status": status,
+            }
+        ),
+        200,
+    )
 
 
 @app.route("/get_video_url", methods=["GET"])
