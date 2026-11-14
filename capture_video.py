@@ -34,6 +34,27 @@ def preview_video(video_url, view_seconds):
             browser.close()
 
 
+def process_uploaded(server_url, info, timeout):
+    from video_client import ProcessVideo, WaitForJob
+
+    job_id = info.get("id")
+    if job_id is None:
+        raise RuntimeError("server did not return a job id (is the service updated?)")
+
+    if info.get("process_status", "none") == "none":
+        ProcessVideo(server_url, job_id)
+
+    if timeout <= 0:
+        return None
+
+    job = WaitForJob(server_url, job_id, timeout=timeout)
+    if job.get("status") != "done":
+        raise RuntimeError(job.get("error") or "processing failed")
+    if not job.get("processed_video_url"):
+        raise RuntimeError("server returned no processed_video_url")
+    return job["processed_video_url"]
+
+
 def non_negative_float(value):
     try:
         number = float(value)
@@ -46,16 +67,25 @@ def non_negative_float(value):
 
 def main():
     parser = argparse.ArgumentParser(description="CSV-driven browser video recorder")
-    parser.add_argument("--csv", default="input.csv",
-                        help="Path to input CSV (default input.csv)")
-    parser.add_argument("--out", default=None,
-                        help="Directory for video (default value in qscript)")
-    parser.add_argument("--server", default=None,
-                        help="URL, example: http://127.0.0.1:8000; "
-                             "if specified, each video is loaded and opened in the browser")
-    parser.add_argument("--view-seconds", type=non_negative_float, default=10,
-                        help="how many seconds should the browser be kept open during a preview; "
-                             "0 = until Enter is pressed (default 10)")
+    parser.add_argument(
+        "--csv", default="input.csv", help="Path to input CSV (default input.csv)"
+    )
+    parser.add_argument(
+        "--out", default=None, help="Directory for video (default value in qscript)"
+    )
+    parser.add_argument(
+        "--server",
+        default=None,
+        help="URL, example: http://127.0.0.1:8000; "
+        "if specified, each video is loaded and opened in the browser",
+    )
+    parser.add_argument(
+        "--view-seconds",
+        type=non_negative_float,
+        default=10,
+        help="how many seconds should the browser be kept open during a preview; "
+        "0 = until Enter is pressed (default 10)",
+    )
     args = parser.parse_args()
 
     if args.server and not args.server.lower().startswith(("http://", "https://")):
@@ -101,7 +131,7 @@ def main():
 
             try:
                 from video_client import UploadVideo
-                
+
                 video_url = UploadVideo(args.server, path, company)
                 uploaded += 1
                 print("[%d] Uploaded: %s" % (i, video_url))
