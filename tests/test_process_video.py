@@ -35,7 +35,6 @@ def ok_encode(cmd):
 
 @pytest.fixture
 def fake_ffmpeg(monkeypatch):
-    """Подменённый ffmpeg: probe отдаёт 1280x720, кодирование задаётся через state.encode."""
     state = SimpleNamespace(calls=[], encode=ok_encode)
 
     def run(cmd, **kwargs):

@@ -32,10 +32,10 @@ def test_types_keep_alternating():
 
 def test_time_is_never_negative_or_decreasing():
     events = []
-    qs.make_zoom_event(events, 100.0, 99.0, 0, 0)  # раньше старта
+    qs.make_zoom_event(events, 100.0, 99.0, 0, 0)
     assert events[0]["t"] == 0.0
     qs.make_zoom_event(events, 100.0, 105.0, 0, 0)
-    qs.make_zoom_event(events, 100.0, 104.0, 0, 0)  # раньше предыдущего
+    qs.make_zoom_event(events, 100.0, 104.0, 0, 0)
     assert [e["t"] for e in events] == [0.0, 5.0, 5.0]
 
 

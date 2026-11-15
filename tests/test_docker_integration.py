@@ -69,7 +69,6 @@ def stack():
 
 
 def make_clip(path):
-    """3-секундное видео 1280x720, созданное ffmpeg внутри контейнера."""
     dc(
         "exec",
         "-T",
@@ -182,7 +181,7 @@ def test_unknown_job_returns_404(stack):
 
 
 def test_data_survives_down_and_up(processed_job):
-    dc("down")  # без -v: тома остаются
+    dc("down")
     dc("up", "-d")
     wait_for_api()
     job = GetJobStatus(BASE, processed_job["id"])

@@ -109,12 +109,12 @@ def test_leading_out_is_ignored():
 
 def test_invalid_events_are_skipped_with_a_warning(caplog):
     raw = [
-        {"t": -1, "x": 1, "y": 1, "type": "in"},  # отрицательное время
-        {"t": "x", "x": 1, "y": 1},  # t не число
-        {"t": 1, "x": 1},  # нет y
-        "junk",  # не объект
-        {"t": 2, "x": 1, "y": 1, "type": "bad"},  # неизвестный тип
-        {"t": 3, "x": 10, "y": 20, "type": "in"},  # единственное корректное
+        {"t": -1, "x": 1, "y": 1, "type": "in"},
+        {"t": "x", "x": 1, "y": 1},
+        {"t": 1, "x": 1},
+        "junk",
+        {"t": 2, "x": 1, "y": 1, "type": "bad"},
+        {"t": 3, "x": 10, "y": 20, "type": "in"},
     ]
     with caplog.at_level(logging.WARNING, logger="apply_zoom"):
         sc = az.parse_sidecar({"events": raw})

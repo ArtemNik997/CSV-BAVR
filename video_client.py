@@ -74,7 +74,6 @@ def GetVideoURL(server_url: str, company_name: str) -> str:
 
 
 def ProcessVideo(server_url: str, job_id) -> dict:
-    """Просит сервер применить zoom к загруженному видео. 409 (уже идёт) не ошибка."""
     base_url = server_url.rstrip("/")
 
     response = requests.post(f"{base_url}/jobs/{job_id}/process", timeout=10)

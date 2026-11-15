@@ -24,7 +24,7 @@ SPEC_PAIR = [ev(3.0, 640, 360, "in"), ev(8.0, 640, 360, "out")]
 
 
 def test_ramp_frames_rounds_half_up():
-    assert az.ramp_frames(0.5, 25) == 13  # round() дал бы 12
+    assert az.ramp_frames(0.5, 25) == 13
 
 
 def test_ramp_is_at_least_one_frame():
@@ -102,7 +102,7 @@ def test_next_zoom_waits_until_previous_one_has_finished():
         [ev(1, 0, 0, "in"), ev(2, 0, 0, "out"), ev(2.1, 0, 0, "in"), ev(6, 0, 0, "out")]
     )
     assert s[0].end == 50
-    assert s[1].start == s[0].end + R  # 63, а не 53
+    assert s[1].start == s[0].end + R
 
 
 def test_in_without_out_is_open_ended():
@@ -226,7 +226,7 @@ def test_filter_contains_required_zoompan_options():
     assert ":d=1:" in f
     assert "s=1280x720" in f
     assert ":fps=25" in f
-    assert "iw-iw/zoom" in f and "ih-ih/zoom" in f  # зажим кропа
+    assert "iw-iw/zoom" in f and "ih-ih/zoom" in f
 
 
 def test_filter_uses_actual_video_size():
@@ -260,7 +260,7 @@ def test_ffmpeg_expressions_match_the_reference_implementation(events, ffeval):
     z_expr = az.zoom_expr(s, sc.zoom_factor, r)
     x_expr = az.position_expr(s, r, "x")
     y_expr = az.position_expr(s, r, "y")
-    iw, ih = 2560, 1440  # апскейл перед zoompan
+    iw, ih = 2560, 1440
     for n in range(0, 400):
         z_ref, x_ref, y_ref = az.crop_at_frame(s, n, sc.zoom_factor, r, iw, ih)
         z = ffeval(z_expr, on=n)

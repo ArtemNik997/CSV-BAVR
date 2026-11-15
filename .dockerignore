@@ -11,3 +11,5 @@ uploads/
 videos.db
 videos.db-wal
 videos.db-shm
+tests/
+.pytest_cache/

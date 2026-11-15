@@ -17,7 +17,6 @@ def spec_events():
 
 @pytest.fixture
 def ffeval():
-    """Считает выражение ffmpeg средствами Python (if, between, min, max)."""
 
     def _eval(expr, **variables):
         expr = re.sub(r"\bif\(", "_if(", expr)
@@ -35,7 +34,6 @@ def ffeval():
 
 @pytest.fixture
 def video(tmp_path):
-    """Поддельный .webm: для путей без ffmpeg содержимое не важно."""
     path = tmp_path / "clip.webm"
     path.write_bytes(b"fake-webm-bytes")
     return path

@@ -277,7 +277,6 @@ def run_job(video_id):
 
 
 @app.route("/upload", methods=["POST"])
-@app.route("/upload", methods=["POST"])
 def upload_video():
     if "file" not in request.files:
         return jsonify({"error": "No file provided"}), 400

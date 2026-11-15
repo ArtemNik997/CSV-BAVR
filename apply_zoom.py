@@ -171,7 +171,6 @@ def load_sidecar(path):
 
 
 def find_sidecar(video_path):
-    """Ищет <video>.zoom.json, затем <video без расширения>.zoom.json."""
     stem, _ = os.path.splitext(video_path)
     for p in (video_path + ".zoom.json", stem + ".zoom.json"):
         if os.path.isfile(p):
@@ -358,7 +357,6 @@ _SAFE_ARG = re.compile(r"^[\w@%+=:,./\\-]+$")
 
 
 def format_command(cmd):
-    """Команда одной строкой для предпросмотра (--dry-run)."""
     return " ".join(
         a if _SAFE_ARG.match(a) else '"%s"' % a.replace('"', '\\"') for a in cmd
     )

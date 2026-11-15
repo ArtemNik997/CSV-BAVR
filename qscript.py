@@ -244,7 +244,6 @@ def _is_nav_error(err):
 
 
 def _pause(seconds):
-    """Пауза, во время которой Playwright обрабатывает события страницы (F5, __zoomAt)."""
     page = _CURRENT_PAGE
     if page is not None:
         try:
@@ -256,7 +255,6 @@ def _pause(seconds):
 
 
 def ZoomAt(x, y, page=None, retries=4):
-    """Переключает зум так же, как F5, но в точке (x, y) вьюпорта. Возвращает 'in' или 'out'."""
     page = page or _CURRENT_PAGE
     if page is None:
         return None
@@ -291,7 +289,6 @@ def _remove_quietly(path):
 
 
 def write_zoom_sidecar(video_path, events):
-    """Пишет <video>.zoom.json только если есть хотя бы одно событие."""
     sidecar_path = video_path + ".zoom.json"
     if not events:
         _remove_quietly(sidecar_path)  # убираем устаревший сайдкар от прошлого запуска
