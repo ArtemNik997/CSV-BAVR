@@ -353,6 +353,6 @@ RUN_DOCKER_TESTS=1 pytest -m integration -v
 | DuckDuckGo показывает ошибку 418                            | временная блокировка: подождите, смените сеть, запустите с окном                                                             |
 | автозум пропал, зум не включается сам                       | в этом окне PowerShell осталась `QS_AUTO_ZOOM=0`: `Remove-Item Env:QS_AUTO_ZOOM` или новое окно                              |
 | зум включается и сразу пропадает                            | F5 нажимали во время автоматического режима: используйте один режим (см. «Автоматический и ручной режим зума»)               |
-| `pytest -v` запускает и юнит-тесты, и интеграционные тесты  | Осталась переменная `RUN_DOCKER_TESTS` в терминале, пропишите `Remove-Item Env:RUN_DOCKER_TESTS` или откройте новый терминал |
+| `pytest -v` запускает и юнит-тесты, и интеграционные тесты  | осталась переменная `RUN_DOCKER_TESTS` в терминале, пропишите `Remove-Item Env:RUN_DOCKER_TESTS` или откройте новый терминал |
 
 Проверка внутри контейнера: `docker compose exec web curl http://localhost/videos`, `docker compose exec web ffmpeg -version`, логи: `docker compose logs -f web`.
