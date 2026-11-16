@@ -84,7 +84,7 @@
     el.className = '__qs_zoomring';
     el.style.left = x + 'px';
     el.style.top = y + 'px';
-    el.style.borderColor = type === 'in' ? '#00c853' : '#f44336'; // зелёное = in, красное = out
+    el.style.borderColor = type === 'in' ? '#00c853' : '#f44336';
     document.documentElement.appendChild(el);
     const anim = el.animate(
       [
@@ -141,7 +141,7 @@
     'keydown',
     (e) => {
       if (e.key !== 'F5') return;
-      e.preventDefault(); // без этого F5 перезагрузит страницу
+      e.preventDefault();
       e.stopPropagation();
       if (!e.repeat) window.__zoomAt(state.x, state.y);
     },

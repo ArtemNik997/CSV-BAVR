@@ -47,7 +47,7 @@ def _start_zoom_clock():
 def make_zoom_event(events, t0, epoch_sec, x, y):
     typ = "in" if len(events) % 2 == 0 else "out"
     t = round(epoch_sec - t0 + ZOOM_TIME_OFFSET, 3)
-    t = max(t, events[-1]["t"] if events else 0.0)  # t не убывает и не отрицателен
+    t = max(t, events[-1]["t"] if events else 0.0)
     events.append(
         {"t": t, "x": round(float(x), 1), "y": round(float(y), 1), "type": typ}
     )
@@ -128,7 +128,7 @@ def _remove_quietly(path):
 def write_zoom_sidecar(video_path, events):
     sidecar_path = video_path + ".zoom.json"
     if not events:
-        _remove_quietly(sidecar_path)  # убираем устаревший сайдкар от прошлого запуска
+        _remove_quietly(sidecar_path)
         return None
     data = {
         "viewport": {"width": VIDEO_SIZE["width"], "height": VIDEO_SIZE["height"]},

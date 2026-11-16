@@ -358,7 +358,7 @@ def upload_video():
         return jsonify({"error": f"Database error: {str(e)}"}), 500
 
     if old_record and old_record["processed_file_path"]:
-        _remove_quietly(old_record["processed_file_path"])  # старый результат устарел
+        _remove_quietly(old_record["processed_file_path"])
 
     if status == "pending":
         submit_job(video_id)

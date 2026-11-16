@@ -323,7 +323,7 @@ def probe_size(ffmpeg, video_path):
 
 def build_command(ffmpeg, video_path, output_path, zoompan, fps, size):
     w, h = size
-    chain = ["fps=%s" % _fmt(fps)]  # постоянная частота кадров: on == номер кадра
+    chain = ["fps=%s" % _fmt(fps)]
     if SUPERSAMPLE > 1:
         chain.append("scale=%d:%d" % (w * SUPERSAMPLE, h * SUPERSAMPLE))
     chain += [zoompan, "format=yuv420p"]
@@ -392,7 +392,7 @@ def run_ffmpeg(cmd, tmp_path, final_path, timeout=None):
     if not os.path.isfile(tmp_path) or os.path.getsize(tmp_path) == 0:
         _remove_quietly(tmp_path)
         raise FfmpegError("ffmpeg produced an empty file")
-    os.replace(tmp_path, final_path)  # результат появляется сразу целиком
+    os.replace(tmp_path, final_path)
 
 
 def process_video(
@@ -417,7 +417,6 @@ def process_video(
         sidecar_path = find_sidecar(video_path)
     sc = load_sidecar(sidecar_path) if sidecar_path else None
 
-    # нет сайдкара или событий: видео копируется без изменений
     if sc is None or not sc.events:
         if not dry_run:
             os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
@@ -475,7 +474,7 @@ def main(argv=None):
             ffmpeg=args.ffmpeg,
             dry_run=args.dry_run,
         )
-    except (OSError, ValueError, FfmpegError) as e:  # SidecarError это ValueError
+    except (OSError, ValueError, FfmpegError) as e:
         print("ERROR: %s" % e, file=sys.stderr)
         return 1
 
