@@ -70,13 +70,21 @@ cp .env.example .env
 Повторная загрузка той же компании обновляет запись и файл, дубликаты не создаются, а результат прежней обработки сбрасывается. Время в БД хранится в UTC (`TIMESTAMPTZ`).
 
 ```
-curl -F "file=@video/Beta Solutions.webm" -F "company_name=Beta Solutions" http://localhost:8000/upload
 curl -F "file=@video/Gamma SARL.webm" -F "company_name=Gamma SARL" -F "zoom=@video/Gamma SARL.webm.zoom.json" http://localhost:8000/upload
-curl "http://localhost:8000/get_video_url?company_name=Beta%20Solutions"
+curl "http://localhost:8000/get_video_url?company_name=Gamma%20SARL"
 curl http://localhost:8000/jobs/1
+curl -X POST http://localhost:8000/jobs/1/process
 ```
 
 В PowerShell используйте `curl.exe`.
+`1` в `/jobs/1` — это `id` из ответа на `POST /upload`. Повторный запуск обработки (`POST /jobs/<id>/process`) возвращает 202, если задача поставлена, 409, если она уже в очереди или идёт, и 404, если записи нет.
+
+**Postman**
+
+- `POST /upload`: Body → `form-data`: `file` (тип File), `company_name` (Text), необязательно `zoom` (File). Заголовок Content-Type не задавайте, Postman поставит его сам.
+- `GET /get_video_url`: в Params ключ company_name.
+- `GET /jobs/{id}`: статус обработки.
+- `POST /jobs/{id}/process`: Body пустое (`none`).
 
 **Статусы обработки (`status` / `process_status`)**
 
