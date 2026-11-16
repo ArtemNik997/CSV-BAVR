@@ -77,11 +77,12 @@ curl -X POST http://localhost:8000/jobs/1/process
 ```
 
 В PowerShell используйте `curl.exe`.
+
 `1` в `/jobs/1` — это `id` из ответа на `POST /upload`. Повторный запуск обработки (`POST /jobs/<id>/process`) возвращает 202, если задача поставлена, 409, если она уже в очереди или идёт, и 404, если записи нет.
 
 **Postman**
 
-- `POST /upload`: Body → `form-data`: `file` (тип File), `company_name` (Text), необязательно `zoom` (File). Заголовок Content-Type не задавайте, Postman поставит его сам.
+- `POST /upload`: Body → `form-data`: `file` (тип File), `company_name` (Text), необязательно `zoom` (File). Заголовок `Content-Type` не задавайте, Postman поставит его сам.
 - `GET /get_video_url`: в Params ключ company_name.
 - `GET /jobs/{id}`: статус обработки.
 - `POST /jobs/{id}/process`: Body пустое (`none`).
