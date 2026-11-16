@@ -334,24 +334,25 @@ RUN_DOCKER_TESTS=1 pytest -m integration -v
 
 ## Частые проблемы
 
-| Симптом                                                     | Причина и решение                                                                                              |
-| ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `Executable doesn't exist ... chrome.exe`                   | не установлен браузер: `python -m playwright install chromium`                                                 |
-| `exec ... no such file or directory` при старте `web`       | в `docker/entrypoint.sh` переводы строк CRLF: приведите к LF                                                   |
-| `ModuleNotFoundError: No module named 'apply_zoom'` в `web` | образ собран до добавления файла: `docker compose up --build`                                                  |
-| `password authentication failed`                            | пароль изменён после создания тома: `docker compose down -v`                                                   |
-| 500 с `'ascii' codec can't encode` при загрузке             | не применён `lang`/`locale` в `videos.conf`: пересоберите `docker compose up --build`                          |
-| порт `8000` занят                                           | освободите порт или измените левую часть `8000:80` в `docker-compose.yml`                                      |
-| рекордер: `UPLOAD FAILED`                                   | сервис не запущен или неверный адрес в `--server`                                                              |
-| рекордер: `PROCESS FAILED: server did not return a job id`  | запущена старая версия сервиса: `docker compose up --build`                                                    |
-| `POST /upload` вернул 400 `Invalid zoom sidecar`            | сайдкар не соответствует формату (см. раздел «Zoom-эффект»)                                                    |
-| статус `failed`                                             | причина в поле `error` у `GET /jobs/<id>` и в `docker compose logs web`; повтор: `POST /jobs/<id>/process`     |
-| `interrupted by service restart`                            | контейнер перезапускали во время обработки; повторите `POST /jobs/<id>/process`                                |
-| `apply_zoom.py`: `ffmpeg not found`                         | установите ffmpeg и добавьте в `PATH` либо укажите `--ffmpeg <путь>`                                           |
-| в видео нет зума                                            | нет `<видео>.webm.zoom.json` (запись с `QS_AUTO_ZOOM=0` без нажатий F5) или видео не обработано                |
-| F5 не включает зум                                          | в headless клавиатуры нет, окно браузера должно быть активным; используйте `window.__zoomAt`                   |
-| DuckDuckGo показывает ошибку 418                            | временная блокировка: подождите, смените сеть, запустите с окном                                               |
-| автозум пропал, зум не включается сам                       | в этом окне PowerShell осталась `QS_AUTO_ZOOM=0`: `Remove-Item Env:QS_AUTO_ZOOM` или новое окно                |
-| зум включается и сразу пропадает                            | F5 нажимали во время автоматического режима: используйте один режим (см. «Автоматический и ручной режим зума») |
+| Симптом                                                     | Причина и решение                                                                                                            |
+| ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `Executable doesn't exist ... chrome.exe`                   | не установлен браузер: `python -m playwright install chromium`                                                               |
+| `exec ... no such file or directory` при старте `web`       | в `docker/entrypoint.sh` переводы строк CRLF: приведите к LF                                                                 |
+| `ModuleNotFoundError: No module named 'apply_zoom'` в `web` | образ собран до добавления файла: `docker compose up --build`                                                                |
+| `password authentication failed`                            | пароль изменён после создания тома: `docker compose down -v`                                                                 |
+| 500 с `'ascii' codec can't encode` при загрузке             | не применён `lang`/`locale` в `videos.conf`: пересоберите `docker compose up --build`                                        |
+| порт `8000` занят                                           | освободите порт или измените левую часть `8000:80` в `docker-compose.yml`                                                    |
+| рекордер: `UPLOAD FAILED`                                   | сервис не запущен или неверный адрес в `--server`                                                                            |
+| рекордер: `PROCESS FAILED: server did not return a job id`  | запущена старая версия сервиса: `docker compose up --build`                                                                  |
+| `POST /upload` вернул 400 `Invalid zoom sidecar`            | сайдкар не соответствует формату (см. раздел «Zoom-эффект»)                                                                  |
+| статус `failed`                                             | причина в поле `error` у `GET /jobs/<id>` и в `docker compose logs web`; повтор: `POST /jobs/<id>/process`                   |
+| `interrupted by service restart`                            | контейнер перезапускали во время обработки; повторите `POST /jobs/<id>/process`                                              |
+| `apply_zoom.py`: `ffmpeg not found`                         | установите ffmpeg и добавьте в `PATH` либо укажите `--ffmpeg <путь>`                                                         |
+| в видео нет зума                                            | нет `<видео>.webm.zoom.json` (запись с `QS_AUTO_ZOOM=0` без нажатий F5) или видео не обработано                              |
+| F5 не включает зум                                          | в headless клавиатуры нет, окно браузера должно быть активным; используйте `window.__zoomAt`                                 |
+| DuckDuckGo показывает ошибку 418                            | временная блокировка: подождите, смените сеть, запустите с окном                                                             |
+| автозум пропал, зум не включается сам                       | в этом окне PowerShell осталась `QS_AUTO_ZOOM=0`: `Remove-Item Env:QS_AUTO_ZOOM` или новое окно                              |
+| зум включается и сразу пропадает                            | F5 нажимали во время автоматического режима: используйте один режим (см. «Автоматический и ручной режим зума»)               |
+| `pytest -v` запускает и юнит-тесты, и интеграционные тесты  | Осталась переменная `RUN_DOCKER_TESTS` в терминале, пропишите `Remove-Item Env:RUN_DOCKER_TESTS` или откройте новый терминал |
 
 Проверка внутри контейнера: `docker compose exec web curl http://localhost/videos`, `docker compose exec web ffmpeg -version`, логи: `docker compose logs -f web`.
