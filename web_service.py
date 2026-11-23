@@ -243,6 +243,38 @@ def run_job(video_id):
             conn.close()
 
 
+class CompanyCsvError(ValueError):
+    pass
+
+
+def _clean(value):
+    value = (value or "").strip()
+    return value or None
+
+
+def parse_companies_csv(text):
+    reader = csv.DictReader(io.StringIO(text, newline=""), delimiter=";", quotechar='"')
+    if not reader.fieldnames:
+        raise CompanyCsvError("CSV file is empty")
+    reader.fieldnames = [h.strip() for h in reader.fieldnames]
+    if "Company Name" not in reader.fieldnames:
+        raise CompanyCsvError(
+            "Column 'Company Name' not found (delimiter must be ';'). "
+            "Found columns: " + ", ".join(reader.fieldnames)
+        )
+
+    rows, total = [], 0
+    for raw in reader:
+        total += 1
+        name = _clean(raw.get("Company Name"))
+        if name is None:
+            continue
+        rows.append(
+            (name, *[_clean(raw.get(header)) for header, _ in COMPANY_CSV_COLUMNS])
+        )
+    return rows, total
+
+
 @app.route("/upload", methods=["POST"])
 def upload_video():
     if "file" not in request.files:
@@ -471,36 +503,42 @@ def job_status(video_id):
     )
 
 
-class CompanyCsvError(ValueError):
-    pass
+@app.route("/upload_companies", methods=["POST"])
+def upload_companies():
+    file = request.files.get("file")
+    if file is None or not file.filename:
+        return jsonify({"error": "No file provided"}), 400
 
+    try:
+        text = file.read().decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return jsonify({"error": "CSV must be UTF-8 encoded"}), 400
 
-def _clean(value):
-    value = (value or "").strip()
-    return value or None
+    try:
+        rows, total = parse_companies_csv(text)
+    except CompanyCsvError as e:
+        return jsonify({"error": str(e)}), 400
 
+    skipped = total - len(rows)
+    if skipped:
+        _log(f"[upload_companies] skipped {skipped} row(s) without Company Name")
 
-def parse_companies_csv(text):
-    reader = csv.DictReader(io.StringIO(text, newline=""), delimiter=";", quotechar='"')
-    if not reader.fieldnames:
-        raise CompanyCsvError("CSV file is empty")
-    reader.fieldnames = [h.strip() for h in reader.fieldnames]
-    if "Company Name" not in reader.fieldnames:
-        raise CompanyCsvError(
-            "Column 'Company Name' not found (delimiter must be ';'). "
-            "Found columns: " + ", ".join(reader.fieldnames)
-        )
+    db = get_db()
+    imported = updated = 0
+    try:
+        with db.cursor() as cur:
+            for values in rows:
+                cur.execute(UPSERT_COMPANY_SQL, values)
+                if cur.fetchone()["inserted"]:
+                    imported += 1
+                else:
+                    updated += 1
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        return jsonify({"error": f"Database error: {str(e)}"}), 500
 
-    rows, total = [], 0
-    for raw in reader:
-        total += 1
-        name = _clean(raw.get("Company Name"))
-        if name is None:
-            continue
-        rows.append(
-            (name, *[_clean(raw.get(header)) for header, _ in COMPANY_CSV_COLUMNS])
-        )
-    return rows, total
+    return jsonify({"imported": imported, "updated": updated, "total_rows": total}), 200
 
 
 if __name__ == "__main__":
