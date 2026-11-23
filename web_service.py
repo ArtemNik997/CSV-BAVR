@@ -13,7 +13,7 @@ from psycopg2.extras import Json
 from flask import Flask, request, jsonify, g, send_from_directory
 
 import apply_zoom
-from db import connect, init_db as init_db_tables
+from db import COMPANIES_COLUMNS, CompanyStatus, connect, init_db as init_db_tables
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
@@ -62,6 +62,8 @@ UPSERT_COMPANY_SQL = """
         updated_at = NOW()
     RETURNING (xmax = 0) AS inserted
 """
+
+COMPANY_SELECT = "id, company_name, " + ", ".join(n for n, _ in COMPANIES_COLUMNS)
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 500 * 1024 * 1024
@@ -273,6 +275,19 @@ def parse_companies_csv(text):
             (name, *[_clean(raw.get(header)) for header, _ in COMPANY_CSV_COLUMNS])
         )
     return rows, total
+
+
+def company_to_dict(record):
+    data = dict(record)
+    status = data.get("status")
+    try:
+        data["status_name"] = CompanyStatus(status).name if status is not None else None
+    except ValueError:
+        data["status_name"] = None
+    for key in ("created_at", "updated_at"):
+        if data.get(key) is not None:
+            data[key] = data[key].isoformat()
+    return data
 
 
 @app.route("/upload", methods=["POST"])
