@@ -4,6 +4,8 @@ import os
 import re
 import sys
 import tempfile
+import csv
+import io
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import quote
 
@@ -18,9 +20,6 @@ UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 
 HOST = os.environ.get("FLASK_HOST", "0.0.0.0")
 PORT = int(os.environ.get("FLASK_PORT", 8000))
-
-app = Flask(__name__)
-app.config["MAX_CONTENT_LENGTH"] = 500 * 1024 * 1024
 
 ALLOWED_EXTENSIONS = {".webm", ".mp4", ".ogv"}
 
@@ -37,6 +36,35 @@ ZOOM_TIMEOUT = float(os.environ.get("ZOOM_TIMEOUT", "900"))
 MAX_SIDECAR_BYTES = 1024 * 1024
 
 EXECUTOR = ThreadPoolExecutor(max_workers=ZOOM_WORKERS, thread_name_prefix="zoom")
+
+COMPANY_CSV_COLUMNS = (
+    ("Language", "language"),
+    ("Country", "country"),
+    ("Postcode", "postcode"),
+    ("City", "city"),
+    ("Street", "street"),
+    ("HouseNo", "house_no"),
+    ("Web", "web"),
+)
+
+UPSERT_COMPANY_SQL = """
+    INSERT INTO companies
+        (company_name, language, country, postcode, city, street, house_no, web)
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+    ON CONFLICT (company_name) DO UPDATE SET
+        language = EXCLUDED.language,
+        country = EXCLUDED.country,
+        postcode = EXCLUDED.postcode,
+        city = EXCLUDED.city,
+        street = EXCLUDED.street,
+        house_no = EXCLUDED.house_no,
+        web = EXCLUDED.web,
+        updated_at = NOW()
+    RETURNING (xmax = 0) AS inserted
+"""
+
+app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = 500 * 1024 * 1024
 
 
 def init_db(retries=60, delay=2):
@@ -441,6 +469,38 @@ def job_status(video_id):
         ),
         200,
     )
+
+
+class CompanyCsvError(ValueError):
+    pass
+
+
+def _clean(value):
+    value = (value or "").strip()
+    return value or None
+
+
+def parse_companies_csv(text):
+    reader = csv.DictReader(io.StringIO(text, newline=""), delimiter=";", quotechar='"')
+    if not reader.fieldnames:
+        raise CompanyCsvError("CSV file is empty")
+    reader.fieldnames = [h.strip() for h in reader.fieldnames]
+    if "Company Name" not in reader.fieldnames:
+        raise CompanyCsvError(
+            "Column 'Company Name' not found (delimiter must be ';'). "
+            "Found columns: " + ", ".join(reader.fieldnames)
+        )
+
+    rows, total = [], 0
+    for raw in reader:
+        total += 1
+        name = _clean(raw.get("Company Name"))
+        if name is None:
+            continue
+        rows.append(
+            (name, *[_clean(raw.get(header)) for header, _ in COMPANY_CSV_COLUMNS])
+        )
+    return rows, total
 
 
 if __name__ == "__main__":
