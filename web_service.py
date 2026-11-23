@@ -7,7 +7,6 @@ import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import quote
 
-import psycopg2
 from psycopg2.extras import Json
 from flask import Flask, request, jsonify, g, send_from_directory
 

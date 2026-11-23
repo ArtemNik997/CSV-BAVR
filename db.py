@@ -3,7 +3,7 @@ import time
 from enum import IntEnum
 
 import psycopg2
-from psycopg2.extras import Json, RealDictCursor
+from psycopg2.extras import RealDictCursor
 
 
 class CompanyStatus(IntEnum):
@@ -99,6 +99,14 @@ def init_db(retries=60, delay=2):
                     process_error = 'interrupted by service restart'
                 WHERE process_status IN ('pending', 'processing')
             """)
+            cur.execute(f"""
+                CREATE TABLE IF NOT EXISTS companies (
+                    id SERIAL PRIMARY KEY,
+                    company_name TEXT NOT NULL UNIQUE,
+                    {_COLS_SQL}
+                )
+            """)
+            cur.execute(f"ALTER TABLE companies {_ADD_SQL}")
 
     finally:
         conn.close()
