@@ -556,6 +556,48 @@ def upload_companies():
     return jsonify({"imported": imported, "updated": updated, "total_rows": total}), 200
 
 
+@app.route("/companies", methods=["GET"])
+def list_companies():
+    sql = f"SELECT {COMPANY_SELECT} FROM companies"
+    params = ()
+
+    status_arg = request.args.get("status")
+    if status_arg is not None:
+        value = status_arg.strip().lower()
+        if value == "pending":
+            sql += " WHERE status IS NULL"
+        else:
+            try:
+                code = CompanyStatus(int(value))
+            except ValueError:
+                return (
+                    jsonify({"error": "status must be an integer 0-5 or 'pending'"}),
+                    400,
+                )
+            sql += " WHERE status = %s"
+            params = (int(code),)
+    sql += " ORDER BY id"
+
+    db = get_db()
+    with db.cursor() as cur:
+        cur.execute(sql, params)
+        records = cur.fetchall()
+    return jsonify([company_to_dict(r) for r in records]), 200
+
+
+@app.route("/companies/<path:company_name>", methods=["GET"])
+def get_company(company_name):
+    db = get_db()
+    record = fetch_one(
+        db,
+        f"SELECT {COMPANY_SELECT} FROM companies WHERE company_name = %s",
+        (company_name.strip(),),
+    )
+    if record is None:
+        return jsonify({"error": "Company not found"}), 404
+    return jsonify(company_to_dict(record)), 200
+
+
 if __name__ == "__main__":
     init_db()
     app.run(host=HOST, port=PORT, threaded=True, debug=False)
