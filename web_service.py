@@ -10,7 +10,14 @@ from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import quote
 
 from psycopg2.extras import Json
-from flask import Flask, request, jsonify, g, send_from_directory
+from flask import (
+    Flask,
+    request,
+    jsonify,
+    g,
+    send_from_directory,
+    render_template_string,
+)
 
 import apply_zoom
 from db import COMPANIES_COLUMNS, CompanyStatus, connect, init_db as init_db_tables
@@ -64,6 +71,35 @@ UPSERT_COMPANY_SQL = """
 """
 
 COMPANY_SELECT = "id, company_name, " + ", ".join(n for n, _ in COMPANIES_COLUMNS)
+
+UPLOAD_COMPANIES_PAGE = """<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Upload companies</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 40rem; margin: 2rem auto;
+           padding: 0 1rem; line-height: 1.5; color-scheme: light dark; }
+    code { word-break: break-all; }
+  </style>
+</head>
+<body>
+  <h1>Upload companies CSV</h1>
+  <form method="post" action="{{ url_for('upload_companies') }}"
+        enctype="multipart/form-data">
+    <p><input type="file" name="file" accept=".csv" required></p>
+    <p><button type="submit">Upload</button></p>
+  </form>
+  <p>UTF-8, delimiter <code>;</code>, header:<br>
+     <code>URL;Company Name;Language;Country;Postcode;City;Street;HouseNo;Web</code></p>
+  <p>Only <code>Company Name</code> is required. Re-uploading updates existing
+     companies and keeps the extracted data.</p>
+  <p><a href="{{ url_for('list_companies') }}">View companies (JSON)</a></p>
+</body>
+</html>
+"""
+
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 500 * 1024 * 1024
@@ -516,6 +552,11 @@ def job_status(video_id):
         ),
         200,
     )
+
+
+@app.route("/upload_companies", methods=["GET"])
+def upload_companies_form():
+    return render_template_string(UPLOAD_COMPANIES_PAGE)
 
 
 @app.route("/upload_companies", methods=["POST"])
