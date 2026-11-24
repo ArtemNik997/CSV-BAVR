@@ -3,7 +3,7 @@ import time
 from enum import IntEnum
 
 import psycopg2
-from psycopg2.extras import RealDictCursor
+from psycopg2.extras import RealDictCursor, Json
 
 
 class CompanyStatus(IntEnum):
@@ -39,6 +39,17 @@ COMPANIES_COLUMNS = (
 
 _COLS_SQL = ",\n".join(f"{n} {t}" for n, t in COMPANIES_COLUMNS)
 _ADD_SQL = ",\n".join(f"ADD COLUMN IF NOT EXISTS {n} {t}" for n, t in COMPANIES_COLUMNS)
+
+EXTRACTED_COLUMNS = (
+    "legal_name",
+    "postal_address",
+    "handelsregister",
+    "vat_number",
+    "phone",
+    "email",
+    "responsible_person",
+    "raw_json",
+)
 
 
 def _db_params():
@@ -108,5 +119,51 @@ def init_db(retries=60, delay=2):
             """)
             cur.execute(f"ALTER TABLE companies {_ADD_SQL}")
 
+    finally:
+        conn.close()
+
+
+def build_company_update(status, impressum_url, row=None):
+    status = int(status)
+
+    if status in (
+        CompanyStatus.OK,
+        CompanyStatus.PARSING_FAILED,
+        CompanyStatus.ADDRESS_INCOMPLETE,
+    ):
+        columns = ("impressum_url", *EXTRACTED_COLUMNS, "status")
+        assignments = ", ".join(f"{c} = %s" for c in columns)
+        params = [impressum_url]
+        params += [
+            Json(row[c]) if c == "raw_json" else row[c] for c in EXTRACTED_COLUMNS
+        ]
+        params.append(status)
+
+    elif status in (CompanyStatus.NO_IMPRESSUM_LINK_FOUND, CompanyStatus.NO_WEBSITE):
+        cleared = ", ".join(f"{c} = NULL" for c in EXTRACTED_COLUMNS)
+        assignments = f"status = %s, impressum_url = NULL, {cleared}"
+        params = [status]
+
+    elif status == CompanyStatus.ERROR:
+        if impressum_url is not None:
+            assignments = "status = %s, impressum_url = %s"
+            params = [status, impressum_url]
+        else:
+            assignments = "status = %s"
+            params = [status]
+
+    else:
+        raise ValueError(f"unexpected company status: {status}")
+
+    sql = f"UPDATE companies SET {assignments}, updated_at = NOW() WHERE id = %s"
+    return sql, params
+
+
+def write_company_result(company_id, status, impressum_url=None, row=None):
+    sql, params = build_company_update(status, impressum_url, row)
+    conn = connect()
+    try:
+        with conn, conn.cursor() as cur:
+            cur.execute(sql, (*params, company_id))
     finally:
         conn.close()
