@@ -26,3 +26,29 @@ _SCHEME_RE = re.compile(r"^[a-z][a-z0-9+.\-]*://", re.IGNORECASE)
 
 class FetchError(Exception):
     """Page is unavailable: network, timout or HTTP 4xx/5xx (status 4)."""
+
+
+def normalize_url(web: str | None) -> str | None:
+    value = (web or "").strip()
+    if not value:
+        return None
+    if value.startswith("//"):
+        return "https:" + value
+    if not _SCHEME_RE.match(value):
+        value = "https://" + value
+    return value
+
+
+def fetch(url: str) -> requests.Response:
+    try:
+        resp = requests.get(
+            url,
+            headers=REQUEST_HEADERS,
+            timeout=REQUEST_TIMEOUT,
+            allow_redirects=True,
+        )
+    except requests.RequestException as e:
+        raise FetchError(f"{url}: {e}") from e
+    if resp.status_code >= 400:
+        raise FetchError(f"{url}: HTTP {resp.status_code}")
+    return resp
