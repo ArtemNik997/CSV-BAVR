@@ -52,3 +52,35 @@ def fetch(url: str) -> requests.Response:
     if resp.status_code >= 400:
         raise FetchError(f"{url}: HTTP {resp.status_code}")
     return resp
+
+
+def _resolve(base_url: str, href: str | None) -> str | None:
+    href = (href or "").strip()
+    if not href or href.startswith("#") or href.lower().startswith(SKIP_HREF_PREFIXES):
+        return None
+    url = urljoin(base_url, href)
+    return url if urlsplit(url).scheme in ("http", "https") else None
+
+
+def find_impressum_link(home_html: str | bytes, base_url: str) -> str | None:
+    soup = BeautifulSoup(home_html, "lxml")
+
+    base_tag = soup.find("base", href=True)
+    if base_tag:
+        base_url = urljoin(base_url, base_tag["href"].strip())
+
+    candidates = []
+    for a in soup.find_all("a", href=True):
+        url = _resolve(base_url, a["href"])
+        if url:
+            candidates.append((a, url))
+
+    for a, url in candidates:
+        text = " ".join(a.get_text(" ").split()).lower()
+        if text in IMPRESSUM_WORDS:
+            return url
+
+    for a, url in candidates:
+        if any(word in a["href"].lower() for word in IMPRESSUM_WORDS):
+            return url
+    return None
