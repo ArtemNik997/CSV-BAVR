@@ -542,3 +542,11 @@ def test_raw_keeps_the_full_parsed_object(mock_post, monkeypatch):
     result = extract_with_deepseek("text")
     assert result["_raw"] == payload
     assert "fax" not in result
+
+
+def test_prompt_schema_example_is_valid_json():
+    start = SYSTEM_PROMPT.index("{")
+    end = SYSTEM_PROMPT.rindex("}") + 1
+    schema = json.loads(SYSTEM_PROMPT[start:end])
+    assert set(schema) == set(RESPONSE_FIELDS) | {"postal_address"}
+    assert set(schema["postal_address"]) == set(ADDRESS_FIELDS)
