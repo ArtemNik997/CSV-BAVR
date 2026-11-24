@@ -1,6 +1,8 @@
 import pytest
 import requests
 
+import json
+
 import impressum
 from impressum import (
     FetchError,
@@ -8,7 +10,14 @@ from impressum import (
     fetch,
     find_impressum_link,
     normalize_url,
+    has_any_field,
+    decide_status,
+    map_to_row,
+    format_postal_address,
+    RESPONSE_FIELDS,
+    ADDRESS_FIELDS,
 )
+from db import CompanyStatus
 
 HOME = "https://www.example.de/"
 LEGAL = "https://www.example.de/legal"
@@ -484,4 +493,276 @@ def test_relative_link_is_resolved_against_the_final_url_after_redirect(monkeypa
     assert (
         find_impressum_link(resp.content, resp.url)
         == "https://www.example.de/de/impressum"
+    )
+
+
+# ------------------------------------------------------------ mapping
+
+FULL_ADDRESS = {
+    "street": "Main Street",
+    "house_no": "12",
+    "postcode": "10115",
+    "city": "Berlin",
+    "country": "Germany",
+}
+
+
+@pytest.fixture
+def full_data():
+    return {
+        "company_name": "ACME GmbH",
+        "postal_address": dict(FULL_ADDRESS),
+        "handelsregister": "HRB 12345",
+        "vat_number": "DE123456789",
+        "phone": "+49 30 123456",
+        "email": "INFO@ACME.DE",
+        "responsible_person": "Max Mustermann",
+    }
+
+
+# ------------------------------------------------------- decide_status
+
+
+def test_complete_data_is_ok():
+    assert decide_status({"postal_address": FULL_ADDRESS}) == CompanyStatus.OK
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        {},
+        {"company_name": None},
+        {"company_name": "null"},
+        {"phone": "N/A"},
+        {"company_name": "   "},
+        {"_raw": {"company_name": "ACME"}},
+    ],
+    ids=["empty", "all-none", "null-string", "na-string", "whitespace", "raw-only"],
+)
+def test_no_detected_fields_is_parsing_failed(data):
+    assert decide_status(data) == CompanyStatus.PARSING_FAILED
+
+
+@pytest.mark.parametrize("missing", ["postcode", "city", "street", "house_no"])
+def test_any_missing_address_part_is_incomplete(missing):
+    address = {k: v for k, v in FULL_ADDRESS.items() if k != missing}
+    assert (
+        decide_status({"postal_address": address}) == CompanyStatus.ADDRESS_INCOMPLETE
+    )
+
+
+def test_country_is_not_required_for_completeness():
+    address = {k: v for k, v in FULL_ADDRESS.items() if k != "country"}
+    assert decide_status({"postal_address": address}) == CompanyStatus.OK
+
+
+def test_missing_vat_phone_person_do_not_downgrade():
+    data = {
+        "postal_address": FULL_ADDRESS,
+        "vat_number": None,
+        "phone": None,
+        "responsible_person": None,
+    }
+    assert decide_status(data) == CompanyStatus.OK
+
+
+def test_only_phone_is_incomplete_not_failed():
+    assert decide_status({"phone": "+49 30 1"}) == CompanyStatus.ADDRESS_INCOMPLETE
+
+
+def test_only_country_is_incomplete():
+    """country найден -> не 2, но адрес неполный -> 3."""
+    assert (
+        decide_status({"postal_address": {"country": "Germany"}})
+        == CompanyStatus.ADDRESS_INCOMPLETE
+    )
+
+
+def test_non_dict_address_is_ignored():
+    assert decide_status({"postal_address": "Berlin"}) == CompanyStatus.PARSING_FAILED
+
+
+def test_junk_address_values_are_empty():
+    data = {"postal_address": {"city": "n/a", "street": "-"}}
+    assert decide_status(data) == CompanyStatus.PARSING_FAILED
+
+
+# ------------------------------------------------------- has_any_field
+
+
+@pytest.mark.parametrize("field", list(RESPONSE_FIELDS))
+def test_every_top_level_field_counts(field):
+    assert has_any_field({field: "x"}) is True
+
+
+@pytest.mark.parametrize("field", list(ADDRESS_FIELDS))
+def test_every_address_subfield_counts(field):
+    assert has_any_field({"postal_address": {field: "x"}}) is True
+
+
+def test_raw_is_not_a_detected_field():
+    """Иначе пустой {} с прикреплённым _raw начнёт считаться найденным."""
+    assert has_any_field({"_raw": {"company_name": "ACME"}}) is False
+
+
+@pytest.mark.parametrize("value", [None, "", "   ", "null", "NULL", "n/a", "N/A", "-"])
+def test_empty_like_values_do_not_count(value):
+    assert has_any_field({"company_name": value}) is False
+
+
+@pytest.mark.parametrize("data", [{}, None, "string", 42, []])
+def test_non_dict_or_empty_input_is_false(data):
+    assert has_any_field(data) is False
+
+
+# -------------------------------------------------- format_postal_address
+
+
+@pytest.mark.parametrize(
+    "address, expected",
+    [
+        (FULL_ADDRESS, "Main Street 12, 10115 Berlin, Germany"),
+        (
+            {
+                "street": "Main Street",
+                "house_no": "12",
+                "postcode": "10115",
+                "city": "Berlin",
+            },
+            "Main Street 12, 10115 Berlin",
+        ),
+        (
+            {
+                "street": "Hauptstr.",
+                "postcode": "10115",
+                "city": "Berlin",
+                "country": "Germany",
+            },
+            "Hauptstr., 10115 Berlin, Germany",
+        ),
+        ({"house_no": "12", "city": "Berlin"}, "12, Berlin"),
+        ({"postcode": "10115", "country": "Germany"}, "10115, Germany"),
+        ({"city": "Berlin"}, "Berlin"),
+        ({}, None),
+        ({"street": "  Main   Street ", "house_no": " 12 "}, "Main Street 12"),
+        (
+            {
+                "street": "Musterstraße",
+                "house_no": "5a",
+                "postcode": "01067",
+                "city": "Dresden",
+                "country": "Deutschland",
+            },
+            "Musterstraße 5a, 01067 Dresden, Deutschland",
+        ),
+    ],
+    ids=[
+        "full",
+        "no-country",
+        "no-house-no",
+        "house+city",
+        "zip+country",
+        "city-only",
+        "empty",
+        "extra-spaces",
+        "umlaut",
+    ],
+)
+def test_address_format(address, expected):
+    assert format_postal_address(address) == expected
+
+
+def test_empty_address_gives_none_not_empty_string():
+    """В БД должен уйти NULL, а не ''."""
+    assert format_postal_address({}) is None
+
+
+# ----------------------------------------------------------- map_to_row
+
+
+def test_legal_name_comes_from_json(full_data):
+    assert map_to_row(full_data, "CSV Name")["legal_name"] == "ACME GmbH"
+
+
+@pytest.mark.parametrize("json_name", [None, "", "   ", "null"])
+def test_legal_name_falls_back_to_csv(json_name):
+    row = map_to_row({"company_name": json_name}, "ACME GmbH")
+    assert row["legal_name"] == "ACME GmbH"
+
+
+def test_fallback_does_not_make_status_ok():
+    """ТЗ: fallback не считается найденным полем."""
+    data = {"company_name": None}
+    assert map_to_row(data, "ACME GmbH")["legal_name"] == "ACME GmbH"
+    assert decide_status(data) == CompanyStatus.PARSING_FAILED
+
+
+def test_email_is_lowercased_in_mapping(full_data):
+    assert map_to_row(full_data, "X")["email"] == "info@acme.de"
+
+
+def test_phone_and_vat_are_kept_as_is(full_data):
+    row = map_to_row(full_data, "X")
+    assert row["phone"] == "+49 30 123456"
+    assert row["vat_number"] == "DE123456789"
+
+
+def test_address_is_joined(full_data):
+    assert (
+        map_to_row(full_data, "X")["postal_address"]
+        == "Main Street 12, 10115 Berlin, Germany"
+    )
+
+
+def test_raw_json_uses_the_full_parsed_object():
+    payload = {"company_name": "A", "fax": "+49 1", "extra": {"x": 1}}
+    data = {k: payload.get(k) for k in RESPONSE_FIELDS}
+    data["postal_address"] = {}
+    data["_raw"] = payload
+
+    row = map_to_row(data, "A")
+
+    assert row["raw_json"] == payload
+    assert "fax" not in row
+    assert "extra" not in row
+
+
+def test_raw_json_falls_back_to_data_without_raw_key():
+    data = {"company_name": "A"}
+    assert map_to_row(data, "A")["raw_json"] == data
+
+
+def test_row_has_exactly_the_eight_extracted_columns():
+    from db import EXTRACTED_COLUMNS
+
+    assert set(map_to_row({}, "X")) == set(EXTRACTED_COLUMNS)
+
+
+def test_empty_data_leaves_extraction_null():
+    row = map_to_row({}, "ACME GmbH")
+    assert row["legal_name"] == "ACME GmbH"
+    assert row["raw_json"] == {}
+    for key in (
+        "postal_address",
+        "handelsregister",
+        "vat_number",
+        "phone",
+        "email",
+        "responsible_person",
+    ):
+        assert row[key] is None
+
+
+def test_map_does_not_mutate_the_source(full_data):
+    snapshot = json.dumps(full_data, sort_keys=True)
+    map_to_row(full_data, "X")
+    assert json.dumps(full_data, sort_keys=True) == snapshot
+
+
+def test_numeric_house_no_is_accepted():
+    """Модель иногда отдаёт число вместо строки."""
+    data = {"postal_address": {**FULL_ADDRESS, "house_no": 12}}
+    assert (
+        map_to_row(data, "X")["postal_address"]
+        == "Main Street 12, 10115 Berlin, Germany"
     )

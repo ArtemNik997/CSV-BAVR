@@ -467,7 +467,7 @@ def extract_with_deepseek(text: str) -> dict:
         "Content-Type": "application/json",
     }
     payload = {
-        "model": os.environ.get("DEEPSEEK_MODEL", default=DEFAULT_MODEL),
+        "model": (os.environ.get("DEEPSEEK_MODEL") or "").strip() or DEFAULT_MODEL,
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
             {
@@ -523,3 +523,9 @@ def extract_with_deepseek(text: str) -> dict:
     if reached_api:
         return {}
     raise ApiError(f"DeepSeek request failed after retries: {transport_error}")
+
+
+def extract_from_text(text: str) -> dict:
+    if not text or not text.strip():
+        return {}
+    return extract_with_deepseek(text)

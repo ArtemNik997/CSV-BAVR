@@ -483,3 +483,62 @@ def test_model_env_override_is_honoured(mock_post, monkeypatch):
     mock_post.return_value = make_response(VALID_JSON)
     extract_with_deepseek("text")
     assert mock_post.call_args.kwargs["json"]["model"] == "deepseek-reasoner"
+
+
+def http_error_response(status):
+    resp = Mock()
+    resp.status_code = status
+    resp.raise_for_status.side_effect = requests.HTTPError(str(status))
+    return resp
+
+
+@patch("impressum.requests.post")
+def test_model_defaults_to_deepseek_chat(mock_post, monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "k")
+    monkeypatch.delenv("DEEPSEEK_MODEL", raising=False)
+    mock_post.return_value = make_response(VALID_JSON)
+    extract_with_deepseek("text")
+    assert mock_post.call_args.kwargs["json"]["model"] == "deepseek-chat"
+
+
+@pytest.mark.parametrize("value", ["", "   "])
+@patch("impressum.requests.post")
+def test_blank_model_env_falls_back_to_default(mock_post, value, monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "k")
+    monkeypatch.setenv("DEEPSEEK_MODEL", value)
+    mock_post.return_value = make_response(VALID_JSON)
+    extract_with_deepseek("text")
+    assert mock_post.call_args.kwargs["json"]["model"] == "deepseek-chat"
+
+
+@patch("impressum.time.sleep")
+@patch("impressum.requests.post")
+def test_empty_then_http_error_still_returns_empty_dict(
+    mock_post, mock_sleep, monkeypatch
+):
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "k")
+    mock_post.side_effect = [make_response("")] * 3 + [http_error_response(500)]
+    assert extract_with_deepseek("text") == {}
+
+
+@pytest.mark.parametrize("bad", [12345, ["a"], {"x": 1}, True, None])
+@patch("impressum.time.sleep")
+@patch("impressum.requests.post")
+def test_non_string_content_returns_empty_dict(mock_post, mock_sleep, bad, monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "k")
+    resp = Mock()
+    resp.status_code = 200
+    resp.raise_for_status.return_value = None
+    resp.json.return_value = {"choices": [{"message": {"content": bad}}]}
+    mock_post.return_value = resp
+    assert extract_with_deepseek("text") == {}
+
+
+@patch("impressum.requests.post")
+def test_raw_keeps_the_full_parsed_object(mock_post, monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "k")
+    payload = {"company_name": "ACME GmbH", "fax": "+49 30 999"}
+    mock_post.return_value = make_response(json.dumps(payload))
+    result = extract_with_deepseek("text")
+    assert result["_raw"] == payload
+    assert "fax" not in result
