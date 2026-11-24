@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import re
+import os
+import json
+import time
+import requests
 from urllib.parse import urljoin, urlsplit
 
 import requests
@@ -70,8 +74,44 @@ KEYWORD_RE = re.compile(
 )
 
 
+SYSTEM_PROMPT = """\
+You extract legally required company information ("Impressum" / "Imprint") from
+German-language website text.
+Return ONLY a valid JSON object (no markdown fences, no commentary) that parses
+with json.loads. The JSON must have exactly these keys:
+{
+"company_name": "<string or null>",
+"postal_address": {
+"street": "<string or null>",
+"house_no": "<string or null>",
+"postcode": "<string or null>",
+"city": "<string or null>",
+"country": "<string or null>"
+},
+"handelsregister": "<string or null>",
+"vat_number": "<string or null>",
+"phone": "<string or null>",
+"email": "<string or null>",
+"responsible_person": "<string or null>"
+}
+Rules:
+- Extract ONLY information actually present in the text; use null when absent.
+- Do not invent or guess values.
+- phone: keep the international format when possible (e.g. +49 ...).
+- vat_number: German VAT ids look like DE followed by 9 digits.
+- email: lowercase.
+- responsible_person: the named person or role legally responsible for the
+content (e.g. Geschaeftsfuehrer, Vorstand, "inhaltlich verantwortlich").
+- Output valid JSON only.
+"""
+
+
 class FetchError(Exception):
     """Page is unavailable: network, timout or HTTP 4xx/5xx (status 4)."""
+
+
+class ApiError(Exception):
+    """Raised when the DeepSeek API request fails."""
 
 
 def normalize_url(web: str | None) -> str | None:
@@ -265,3 +305,138 @@ def optimize_text(text: str, max_chars: int = MAX_TEXT_CHARS) -> OptimizedText:
         body = head_tail_window(body, max_chars)
         strategy += "+window"
     return OptimizedText(body, strategy, before, start, len(cleaned) - end)
+
+
+def extract_with_deepseek(text):
+    """Extract structured Impressum data using the DeepSeek API."""
+
+    api_key = os.environ.get("DEEPSEEK_API_KEY")
+    if not api_key:
+        raise ApiError("DEEPSEEK_API_KEY is not set. Please check your environment.")
+
+    if not text or not text.strip():
+        return {}
+
+    url = "https://api.deepseek.com/chat/completions"
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    payload = {
+        "model": os.environ.get("DEEPSEEK_MODEL", "deepseek-chat"),
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": (
+                    "Extract the Impressum data from the text below "
+                    "and return JSON:\n\n" + text
+                ),
+            },
+        ],
+        "response_format": {"type": "json_object"},
+        "max_tokens": 1024,
+        "temperature": 0,
+    }
+
+    # Three retries after the initial attempt: 2, 4 and 8 seconds.
+    retry_delays = (2, 4, 8)
+
+    for attempt in range(len(retry_delays) + 1):
+        try:
+            response = requests.post(
+                url,
+                headers=headers,
+                json=payload,
+                timeout=60,
+            )
+
+            # Authentication errors are not retried.
+            if response.status_code in (401, 403):
+                raise ApiError(
+                    f"DeepSeek authentication failed: HTTP "
+                    f"{response.status_code}. Check the API key."
+                )
+
+            # Retry rate limits and server errors.
+            if response.status_code == 429 or response.status_code >= 500:
+                response.raise_for_status()
+
+            # Other HTTP errors are treated as permanent.
+            response.raise_for_status()
+
+            result = response.json()
+            content = result["choices"][0]["message"]["content"]
+
+            if not content or not content.strip():
+                raise ValueError("DeepSeek returned an empty response")
+
+            content = content.strip()
+
+            # Remove optional Markdown code fences.
+            if content.startswith("```"):
+                lines = content.splitlines()
+                if lines[-1].strip() == "```":
+                    lines = lines[1:-1]
+                content = "\n".join(lines).strip()
+
+                if content.lower().startswith("json"):
+                    content = content[4:].strip()
+
+            data = json.loads(content)
+
+            if not isinstance(data, dict):
+                raise ValueError("DeepSeek response is not a JSON object")
+
+            # Normalize the expected fields.
+            fields = (
+                "company_name",
+                "handelsregister",
+                "vat_number",
+                "phone",
+                "email",
+                "responsible_person",
+            )
+
+            normalized = {field: data.get(field) for field in fields}
+
+            address = data.get("postal_address")
+            if not isinstance(address, dict):
+                address = {}
+
+            normalized["postal_address"] = {
+                field: address.get(field)
+                for field in (
+                    "street",
+                    "house_no",
+                    "postcode",
+                    "city",
+                    "country",
+                )
+            }
+
+            return normalized
+
+        except ApiError:
+            raise
+
+        except (
+            requests.exceptions.RequestException,
+            ValueError,
+            KeyError,
+            IndexError,
+            TypeError,
+        ) as exc:
+            if attempt == len(retry_delays):
+                if isinstance(exc, ValueError) or isinstance(
+                    exc, (KeyError, IndexError, TypeError)
+                ):
+                    return {}
+
+                raise ApiError(f"DeepSeek request failed after retries: {exc}") from exc
+
+            time.sleep(retry_delays[attempt])
+
+    return {}
