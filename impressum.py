@@ -81,7 +81,7 @@ with json.loads. The JSON must have exactly these keys:
 {
   "company_name": "<string or null>",
   "postal_address": {
-    "street": "<string or null>",
+    "street": "<string or null>",None
     "house_no": "<string or null>",
     "postcode": "<string or null>",
     "city": "<string or null>",
