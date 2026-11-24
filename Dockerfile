@@ -17,7 +17,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY web_service.py apply_zoom.py db.py app.wsgi ./
+COPY web_service.py apply_zoom.py db.py impressum.py app.wsgi ./
 COPY docker/apache/videos.conf /etc/apache2/sites-available/videos.conf
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 
