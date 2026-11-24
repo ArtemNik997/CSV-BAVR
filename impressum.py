@@ -84,3 +84,12 @@ def find_impressum_link(home_html: str | bytes, base_url: str) -> str | None:
         if any(word in a["href"].lower() for word in IMPRESSUM_WORDS):
             return url
     return None
+
+
+def extract_visible_text(html: str | bytes) -> str:
+    soup = BeautifulSoup(html, "lxml")
+    for tag in soup(REMOVED_TAGS):
+        tag.decompose()
+    text = soup.get_text(separator="\n")
+    lines = (" ".join(line.split()) for line in text.splitlines())
+    return "\n".join(line for line in lines if line)
