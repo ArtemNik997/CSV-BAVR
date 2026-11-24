@@ -9,6 +9,7 @@ import requests
 from urllib.parse import urljoin, urlsplit
 from bs4 import BeautifulSoup
 from dataclasses import dataclass
+from db import CompanyStatus
 
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -118,6 +119,24 @@ RESPONSE_FIELDS = (
     "responsible_person",
 )
 ADDRESS_FIELDS = ("street", "house_no", "postcode", "city", "country")
+
+EMPTY_TOKENS = frozenset(
+    {
+        "",
+        "null",
+        "none",
+        "n/a",
+        "na",
+        "n.a.",
+        "nan",
+        "-",
+        "--",
+        "nicht angegeben",
+        "keine angabe",
+    }
+)
+
+REQUIRED_ADDRESS_FIELDS = ("postcode", "city", "street", "house_no")
 
 
 class FetchError(Exception):
@@ -357,6 +376,74 @@ def _strip_code_fences(text: str) -> str:
     if text.lower().startswith("json"):
         text = text[4:].strip()
     return text
+
+
+def _clean(value) -> str | None:
+    """Empty, space and garbage value -> None, else normalized string"""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        value = str(value)
+    value = " ".join(value.split())
+    if not value or value.lower() in EMPTY_TOKENS:
+        return None
+    return value
+
+
+def _address(data) -> dict:
+    address = data.get("postal_address")
+    return address if isinstance(address, dict) else {}
+
+
+def has_any_field(data) -> bool:
+    if not isinstance(data, dict) or not data:
+        return False
+    for field in RESPONSE_FIELDS:
+        if _clean(data.get(field)) is not None:
+            return True
+    return any(_clean(v) is not None for v in _address(data).values())
+
+
+def decide_status(data) -> int:
+    if not has_any_field(data):
+        return CompanyStatus.PARSING_FAILED  # 2
+    address = _address(data)
+    if any(_clean(address.get(f)) is None for f in REQUIRED_ADDRESS_FIELDS):
+        return CompanyStatus.ADDRESS_INCOMPLETE  # 3
+    return CompanyStatus.OK  # 0
+
+
+def format_postal_address(address) -> str | None:
+    street = _clean(address.get("street"))
+    house_no = _clean(address.get("house_no"))
+    postcode = _clean(address.get("postcode"))
+    city = _clean(address.get("city"))
+    country = _clean(address.get("country"))
+
+    parts = [
+        " ".join(p for p in (street, house_no) if p),
+        " ".join(p for p in (postcode, city) if p),
+        country,
+    ]
+    return ", ".join(p for p in parts if p) or None
+
+
+def map_to_row(data, csv_company_name) -> dict:
+    """Prepares values ​​for the `companies` columns. `Status` is determined separately via `decide_status`"""
+    data = data if isinstance(data, dict) else {}
+    address = _address(data)
+    email = _clean(data.get("email"))
+
+    return {
+        "legal_name": _clean(data.get("company_name")) or _clean(csv_company_name),
+        "postal_address": format_postal_address(address),
+        "handelsregister": _clean(data.get("handelsregister")),
+        "vat_number": _clean(data.get("vat_number")),
+        "phone": _clean(data.get("phone")),
+        "email": email.lower() if email else None,
+        "responsible_person": _clean(data.get("responsible_person")),
+        "raw_json": data.get("_raw", data),
+    }
 
 
 def extract_with_deepseek(text: str) -> dict:
