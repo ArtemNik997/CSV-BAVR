@@ -5,9 +5,8 @@ import os
 import json
 import time
 import requests
-from urllib.parse import urljoin, urlsplit
 
-import requests
+from urllib.parse import urljoin, urlsplit
 from bs4 import BeautifulSoup
 from dataclasses import dataclass
 
@@ -81,7 +80,7 @@ with json.loads. The JSON must have exactly these keys:
 {
   "company_name": "<string or null>",
   "postal_address": {
-    "street": "<string or null>",
+    "street": "<string or null>",None
     "house_no": "<string or null>",
     "postcode": "<string or null>",
     "city": "<string or null>",
@@ -108,6 +107,7 @@ DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
 DEEPSEEK_TIMEOUT = 60
 DEEPSEEK_MAX_TOKENS = 1024
 RETRY_DELAYS = (2, 4, 8)
+DEFAULT_MODEL = "deepseek-chat"
 
 RESPONSE_FIELDS = (
     "company_name",
@@ -121,7 +121,7 @@ ADDRESS_FIELDS = ("street", "house_no", "postcode", "city", "country")
 
 
 class FetchError(Exception):
-    """Page is unavailable: network, timout or HTTP 4xx/5xx (status 4)."""
+    """Page is unavailable: network, timeout or HTTP 4xx/5xx (status 4)."""
 
 
 class ApiError(Exception):
@@ -380,7 +380,7 @@ def extract_with_deepseek(text: str) -> dict:
         "Content-Type": "application/json",
     }
     payload = {
-        "model": os.environ.get("DEEPSEEK_MODEL"),
+        "model": os.environ.get("DEEPSEEK_MODEL", default=DEFAULT_MODEL),
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
             {
