@@ -100,7 +100,7 @@ Rules:
 - vat_number: German VAT ids look like DE followed by 9 digits.
 - email: lowercase.
 - responsible_person: the named person or role legally responsible for the
-  content (e.g. Geschaeftsfuehrer, Vorstand, "inhaltlich verantwortlich").
+  content (e.g. Geschaeftsfuehrer, Vorstand, "inhaltlich verantwortlich"). if multiple people are specified, return all of them separated by commas.
 - Output valid JSON only.
 """
 
@@ -119,6 +119,7 @@ RESPONSE_FIELDS = (
     "responsible_person",
 )
 ADDRESS_FIELDS = ("street", "house_no", "postcode", "city", "country")
+EMAIL_RE = re.compile(r"^[^@\s\[\]]+@[^@\s\[\]]+\.[A-Za-z]{2,}$")
 
 EMPTY_TOKENS = frozenset(
     {
@@ -207,6 +208,16 @@ def find_impressum_link(home_html: str | bytes, base_url: str) -> str | None:
 
 def extract_visible_text(html: str | bytes) -> str:
     soup = BeautifulSoup(html, "lxml")
+    for el in soup.select("[data-cfemail]"):
+        try:
+            el.replace_with(decode_cf_email(el["data-cfemail"]))
+        except ValueError:
+            pass
+    for a in soup.select('a[href*="/cdn-cgi/l/email-protection#"]'):
+        try:
+            a.replace_with(decode_cf_email(a["href"].split("#", 1)[1]))
+        except (ValueError, IndexError):
+            pass
     for tag in soup(REMOVED_TAGS):
         tag.decompose()
     text = soup.get_text(separator="\n")
@@ -429,10 +440,10 @@ def format_postal_address(address) -> str | None:
 
 
 def map_to_row(data, csv_company_name) -> dict:
-    """Prepares values ​​for the `companies` columns. `Status` is determined separately via `decide_status`"""
     data = data if isinstance(data, dict) else {}
     address = _address(data)
     email = _clean(data.get("email"))
+    email = email.lower() if email and EMAIL_RE.match(email) else None
 
     return {
         "legal_name": _clean(data.get("company_name")) or _clean(csv_company_name),
@@ -446,15 +457,14 @@ def map_to_row(data, csv_company_name) -> dict:
     }
 
 
-def extract_with_deepseek(text: str) -> dict:
-    """
-    Extracts Impressum data via the DeepSeek API.
+def decode_cf_email(hex_str: str) -> str:
+    key = int(hex_str[:2], 16)
+    return "".join(
+        chr(int(hex_str[i : i + 2], 16) ^ key) for i in range(2, len(hex_str), 2)
+    )
 
-    Returns a normalized dict. An empty dict indicates that nothing was
-    extracted (stage 9 will set the status to 2). An ApiError signifies a
-    transport or API error (status 4). The API key is never included in the
-    exception message.
-    """
+
+def extract_with_deepseek(text: str) -> dict:
     api_key = os.environ.get("DEEPSEEK_API_KEY")
     if not api_key:
         raise ApiError("DEEPSEEK_API_KEY is not set. Please check your environment.")

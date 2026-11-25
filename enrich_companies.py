@@ -130,11 +130,11 @@ def process_company(rec: dict, log: logging.Logger) -> tuple[int, int]:
     try:
         url = normalize_url(raw_web)
         if url is None:
-            log.warning("%s | нет сайта (web пустой)", name)
+            log.warning("%s | no website (web is empty)", name)
             write_company_result(cid, CompanyStatus.NO_WEBSITE)
             return CompanyStatus.NO_WEBSITE, 0
 
-        log.info("%s | загрузка главной: %s", name, url)
+        log.info("%s | loading url: %s", name, url)
         home_resp = fetch(url)
 
         impressum_url = find_impressum_link(home_resp.content, home_resp.url)
@@ -157,7 +157,7 @@ def process_company(rec: dict, log: logging.Logger) -> tuple[int, int]:
         status = decide_status(data)
         row = map_to_row(data, name)
 
-        log.info("%s | статус=%d (%s)", name, int(status), CompanyStatus(status).name)
+        log.info("%s | status=%d (%s)", name, int(status), CompanyStatus(status).name)
         write_company_result(cid, status, impressum_url, row)
 
         return status, tokens_saved
@@ -168,7 +168,7 @@ def process_company(rec: dict, log: logging.Logger) -> tuple[int, int]:
         return CompanyStatus.ERROR, tokens_saved
 
     except Exception:
-        log.exception("%s | непредвиденная ошибка", name)
+        log.exception("%s | unknown error", name)
         save_error(cid, impressum_url, log)
         return CompanyStatus.ERROR, tokens_saved
 
