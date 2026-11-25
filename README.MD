@@ -328,7 +328,7 @@ RUN_DOCKER_TESTS=1 pytest -m integration -v
 
 ### Формат CSV
 
-UTF-8, разделитель `;`, ограничитель `"`. Обязательные колонки: `Company Name` и `Web`. Остальные сохраняются как есть.
+UTF-8, разделитель `;`, ограничитель `"`. Обязательная колонка: `Company Name`: без `Web` компания получит статус 5. Остальные сохраняются как есть.
 
 ```
 URL;Company Name;Language;Country;Postcode;City;Street;HouseNo;Web
@@ -390,10 +390,11 @@ docker compose exec web python enrich_companies.py --force
 
 Impressum-страницы содержат навигацию, cookie-баннеры, футеры. Перед отправкой в API текст оптимизируется:
 
+0. Текст до 8000 символов отправляется без изменений.
 1. Удаляются шумовые строки (Datenschutz, AGB, Menü, языки, ©).
 2. Находится головной якорь (`Impressum`, `Angaben gemäß § 5 TMG/DDG`) и последний сильный сигнал (телефон `+49`, НДС `DE\d{9}`, e-mail, HRB/HRA, Geschäftsführer).
 3. Текст обрезается до окна между якорями («сэндвич»). Если окно длиннее 8000 символов — фильтр по ключевым словам, затем head+tail window.
-4. Cloudflare `data-cfemail` декодируется автоматически.
+4. Email, скрытые Cloudflare, декодируются.
 
 В логе видно экономию:
 
