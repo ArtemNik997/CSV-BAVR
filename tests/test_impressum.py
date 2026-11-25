@@ -14,6 +14,7 @@ from impressum import (
     decide_status,
     map_to_row,
     format_postal_address,
+    decode_cf_email,
     RESPONSE_FIELDS,
     ADDRESS_FIELDS,
 )
@@ -766,3 +767,72 @@ def test_numeric_house_no_is_accepted():
         map_to_row(data, "X")["postal_address"]
         == "Main Street 12, 10115 Berlin, Germany"
     )
+
+
+# ------------------------------------------------------- cfemail decoding
+
+
+def test_cfemail_data_attribute_is_decoded():
+    # test@example.de, key=0x3a
+    encoded = "3a4e5f494e7a5f425b574a565f145e5f"
+    html = (
+        "<html><body>"
+        '<p>Kontakt: <span class="cf_email" '
+        f'data-cfemail="{encoded}">[email protected]</span></p>'
+        "</body></html>"
+    )
+    text = extract_visible_text(html)
+    assert "test@example.de" in text
+    assert encoded not in text
+
+
+def test_cfemail_cdn_link_is_decoded():
+    encoded = "3a4e5f494e7a5f425b574a565f145e5f"
+    html = (
+        "<html><body>"
+        '<p>Email: <a href="/cdn-cgi/l/email-protection#'
+        f'{encoded}">[email protected]</a></p>'
+        "</body></html>"
+    )
+    text = extract_visible_text(html)
+    assert "test@example.de" in text
+
+
+def test_cfemail_invalid_hex_does_not_crash():
+    html = (
+        "<html><body>"
+        '<p>Before <span data-cfemail="ZZZZ">broken</span> After</p>'
+        "</body></html>"
+    )
+    text = extract_visible_text(html)
+    assert "Before" in text
+    assert "After" in text
+
+
+def test_cfemail_empty_page_stays_empty():
+    """Страница только с cfemail-заглушкой без валидного hex даёт пустой текст."""
+    html = '<html><body><span data-cfemail="zz"></span></body></html>'
+    text = extract_visible_text(html)
+    assert text == ""
+
+
+# ----------------------------------------------------------- map_to_row: email validation
+
+
+@pytest.mark.parametrize(
+    "bad_email",
+    ["not-an-email", "", "   ", "missing-at-sign.de", "@no-local.de", "no-domain@"],
+)
+def test_map_to_row_invalid_email_gives_none(bad_email):
+    row = map_to_row({"email": bad_email}, "ACME GmbH")
+    assert row["email"] is None
+
+
+def test_map_to_row_valid_email_is_lowercased():
+    row = map_to_row({"email": "INFO@ACME.DE"}, "X")
+    assert row["email"] == "info@acme.de"
+
+
+def test_map_to_row_email_with_plus_tag_is_accepted():
+    row = map_to_row({"email": "User.Name+Tag@Domain.CO.UK"}, "X")
+    assert row["email"] == "user.name+tag@domain.co.uk"
