@@ -207,7 +207,7 @@ def test_request_uses_expected_parameters(mock_post, monkeypatch):
         ('```\n{"a":1}\n```', '{"a":1}'),
         ('```JSON\n{"a":1}\n```', '{"a":1}'),
         ('```Json\n{"a":1}\n```', '{"a":1}'),
-        ('  {"a":1}  ', '  {"a":1}  '),  # без ограждений не трогаем
+        ('  {"a":1}  ', '  {"a":1}  '),
         ("", ""),
     ],
 )
@@ -218,8 +218,8 @@ def test_code_fences_are_stripped(source, expected):
 @pytest.mark.parametrize(
     "source",
     [
-        '```json\n{"a":1}',  # обрезанный ответ, нет закрывающего
-        '```json\n{"a":1}\n```\nHope this helps!',  # комментарий после ограждения
+        '```json\n{"a":1}',
+        '```json\n{"a":1}\n```\nHope this helps!',
     ],
 )
 def test_broken_fences_stay_unparseable(source):
@@ -244,24 +244,23 @@ def test_first_choice_is_used():
 @pytest.mark.parametrize(
     "body",
     [
-        [],  # не dict
-        {},  # нет choices
-        {"choices": []},  # пустой список
-        {"choices": "x"},  # не список
-        {"choices": [1]},  # элемент не dict
-        {"choices": [{}]},  # нет message
+        [],
+        {},
+        {"choices": []},
+        {"choices": "x"},
+        {"choices": [1]},
+        {"choices": [{}]},
         {"choices": [{"message": None}]},
         {"choices": [{"message": {"content": None}}]},
-        {"choices": [{"message": {"content": 5}}]},  # не строка
+        {"choices": [{"message": {"content": 5}}]},
         {"choices": [{"message": {"content": "  \n "}}]},
-        {"error": {"message": "Model Not Exist"}},  # ошибка API вместо ответа
+        {"error": {"message": "Model Not Exist"}},
         "string",
         42,
         None,
     ],
 )
 def test_unusable_body_raises_value_error(body):
-    """ValueError, а не KeyError/IndexError — иначе исход станет статусом 4 вместо 2."""
     with pytest.raises(ValueError):
         _content_from_body(body)
 
@@ -300,7 +299,6 @@ def test_normalize_does_not_mutate_the_source():
 
 
 def test_email_case_is_left_to_stage_9():
-    """lower() делает map_to_row, клиент отдаёт как есть."""
     assert _normalize_fields({"email": "INFO@ACME.DE"})["email"] == "INFO@ACME.DE"
 
 
@@ -316,7 +314,6 @@ def http_error_response(status):
 def test_empty_then_http_error_still_returns_empty_dict(
     mock_post, mock_sleep, monkeypatch
 ):
-    """Пустой ответ важнее поздней сетевой ошибки: статус 2, не 4 (решение №3)."""
     monkeypatch.setenv("DEEPSEEK_API_KEY", "k")
     mock_post.side_effect = [
         make_response(""),
@@ -332,7 +329,6 @@ def test_empty_then_http_error_still_returns_empty_dict(
 def test_mixed_transport_and_content_is_deterministic(
     mock_post, mock_sleep, monkeypatch
 ):
-    """Чередование 500/пустой ответ не меняет исход."""
     monkeypatch.setenv("DEEPSEEK_API_KEY", "k")
     mock_post.side_effect = [
         http_error_response(500),
@@ -346,7 +342,6 @@ def test_mixed_transport_and_content_is_deterministic(
 @patch("impressum.time.sleep")
 @patch("impressum.requests.post")
 def test_all_http_errors_raise_api_error(mock_post, mock_sleep, monkeypatch):
-    """Ни одного валидного HTTP-ответа -> ApiError (статус 4)."""
     monkeypatch.setenv("DEEPSEEK_API_KEY", "k")
     mock_post.return_value = http_error_response(503)
     with pytest.raises(ApiError):
@@ -358,7 +353,6 @@ def test_all_http_errors_raise_api_error(mock_post, mock_sleep, monkeypatch):
 @patch("impressum.time.sleep")
 @patch("impressum.requests.post")
 def test_html_body_is_retried_then_empty_dict(mock_post, mock_sleep, monkeypatch):
-    """requests.JSONDecodeError — наследник и RequestException, и ValueError."""
     monkeypatch.setenv("DEEPSEEK_API_KEY", "k")
     resp = Mock()
     resp.status_code = 200
@@ -374,7 +368,6 @@ def test_html_body_is_retried_then_empty_dict(mock_post, mock_sleep, monkeypatch
 @patch("impressum.time.sleep")
 @patch("impressum.requests.post")
 def test_body_without_choices_returns_empty_dict(mock_post, mock_sleep, monkeypatch):
-    """Ошибка API в теле с HTTP 200 — это парсинг, а не транспорт."""
     monkeypatch.setenv("DEEPSEEK_API_KEY", "k")
     resp = Mock()
     resp.status_code = 200

@@ -29,7 +29,7 @@ ALL_STATUSES = [
 @pytest.mark.parametrize("status", ALL_STATUSES, ids=lambda s: s.name)
 def test_placeholders_match_params(status, row):
     sql, params = build_company_update(status, SECRET_URL, row)
-    assert sql.count("%s") == len(params) + 1  # +1 для WHERE id
+    assert sql.count("%s") == len(params) + 1
 
 
 @pytest.mark.parametrize("status", ALL_STATUSES, ids=lambda s: s.name)
@@ -115,7 +115,6 @@ def test_failure_statuses_clear_extraction(status, row):
     ids=lambda s: s.name,
 )
 def test_failure_statuses_ignore_passed_url(status, row):
-    """Даже если URL передали, он не должен попасть в запрос."""
     sql, params = build_company_update(status, SECRET_URL, row)
     assert "impressum_url = %s" not in sql
     assert params == [int(status)]

@@ -33,8 +33,6 @@ def make_response(status=200, content=b"<html></html>", url="https://example.de/
 
 
 class FakeGet:
-    """Заменяет requests.get: запоминает вызовы, отдаёт ответ или бросает исключение."""
-
     def __init__(self):
         self.calls = []
         self.result = make_response()
@@ -572,7 +570,6 @@ def test_only_phone_is_incomplete_not_failed():
 
 
 def test_only_country_is_incomplete():
-    """country найден -> не 2, но адрес неполный -> 3."""
     assert (
         decide_status({"postal_address": {"country": "Germany"}})
         == CompanyStatus.ADDRESS_INCOMPLETE
@@ -602,7 +599,6 @@ def test_every_address_subfield_counts(field):
 
 
 def test_raw_is_not_a_detected_field():
-    """Иначе пустой {} с прикреплённым _raw начнёт считаться найденным."""
     assert has_any_field({"_raw": {"company_name": "ACME"}}) is False
 
 
@@ -674,7 +670,6 @@ def test_address_format(address, expected):
 
 
 def test_empty_address_gives_none_not_empty_string():
-    """В БД должен уйти NULL, а не ''."""
     assert format_postal_address({}) is None
 
 
@@ -692,7 +687,6 @@ def test_legal_name_falls_back_to_csv(json_name):
 
 
 def test_fallback_does_not_make_status_ok():
-    """ТЗ: fallback не считается найденным полем."""
     data = {"company_name": None}
     assert map_to_row(data, "ACME GmbH")["legal_name"] == "ACME GmbH"
     assert decide_status(data) == CompanyStatus.PARSING_FAILED
@@ -761,7 +755,6 @@ def test_map_does_not_mutate_the_source(full_data):
 
 
 def test_numeric_house_no_is_accepted():
-    """Модель иногда отдаёт число вместо строки."""
     data = {"postal_address": {**FULL_ADDRESS, "house_no": 12}}
     assert (
         map_to_row(data, "X")["postal_address"]
@@ -810,7 +803,6 @@ def test_cfemail_invalid_hex_does_not_crash():
 
 
 def test_cfemail_empty_page_stays_empty():
-    """Страница только с cfemail-заглушкой без валидного hex даёт пустой текст."""
     html = '<html><body><span data-cfemail="zz"></span></body></html>'
     text = extract_visible_text(html)
     assert text == ""

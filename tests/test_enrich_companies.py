@@ -64,9 +64,7 @@ FULL_DATA = {
 }
 
 
-# ===========================================================================
 # build_select_query
-# ===========================================================================
 
 
 class TestBuildSelectQuery:
@@ -149,9 +147,7 @@ class TestBuildSelectQuery:
         assert params[0] == evil
 
 
-# ===========================================================================
 # parse_args: --limit validation
-# ===========================================================================
 
 
 class TestParseArgsLimit:
@@ -171,9 +167,7 @@ class TestParseArgsLimit:
         assert args.limit is None
 
 
-# ===========================================================================
 # process_company: status 5 (NO_WEBSITE)
-# ===========================================================================
 
 
 class TestProcessCompanyNoWebsite:
@@ -214,9 +208,7 @@ class TestProcessCompanyNoWebsite:
         ), "extract_from_text() should not be called for empty web"
 
 
-# ===========================================================================
 # process_company: status 1 (NO_IMPRESSUM_LINK_FOUND)
-# ===========================================================================
 
 
 class TestProcessCompanyNoImpressumLink:
@@ -240,7 +232,6 @@ class TestProcessCompanyNoImpressumLink:
         assert spy_write[0]["row"] is None
 
     def test_no_api_call_when_link_missing(self, log, spy_write, monkeypatch):
-        """Если ссылка не найдена, API не вызывается."""
         monkeypatch.setattr(
             enrich_companies, "normalize_url", lambda w: "https://test.de/"
         )
@@ -262,9 +253,7 @@ class TestProcessCompanyNoImpressumLink:
         assert api_called == []
 
 
-# ===========================================================================
 # process_company: Status 0 (OK)
-# ===========================================================================
 
 
 class TestProcessCompanyOK:
@@ -367,9 +356,7 @@ class TestProcessCompanyOK:
         assert fetch_calls[1] == "https://test.de/impressum"
 
 
-# ===========================================================================
 # process_company: Status 4 (ERROR)
-# ===========================================================================
 
 
 class TestProcessCompanyError:
@@ -395,7 +382,6 @@ class TestProcessCompanyError:
         assert spy_write[0]["impressum_url"] is None
 
     def test_fetch_error_on_impressum_keeps_url(self, log, spy_write, monkeypatch):
-        """Ошибка загрузки Impressum: impressum_url сохраняется (уже найден)."""
         from impressum import FetchError
 
         call_count = []
@@ -463,7 +449,6 @@ class TestProcessCompanyError:
         assert spy_write[0]["impressum_url"] == "https://test.de/impressum"
 
     def test_unexpected_exception_gives_status_4(self, log, spy_write, monkeypatch):
-        """Непредвиденное исключение тоже даёт статус 4, а не падает наружу."""
         monkeypatch.setattr(
             enrich_companies, "normalize_url", lambda w: "https://test.de/"
         )
@@ -480,7 +465,6 @@ class TestProcessCompanyError:
         assert len(spy_write) == 1
 
     def test_process_company_never_raises(self, log, monkeypatch):
-        """process_company НИКОГДА не бросает исключение наружу."""
         monkeypatch.setattr(
             enrich_companies, "normalize_url", lambda w: "https://test.de/"
         )
