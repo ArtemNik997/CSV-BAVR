@@ -56,14 +56,14 @@ HEAD_ANCHOR_RE = re.compile(
 
 _PHONE_RE = re.compile(r"(?:\+49|0049)[\d\s\-/()]{6,}")
 _VAT_RE = re.compile(r"\bDE\s?\d{9}\b")
-_EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
+_VALID_EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 _REGISTRY_RE = re.compile(
     r"\bHR[AB]\s?\d+|\b(?:Registergericht|Amtsgericht)\b", re.IGNORECASE
 )
 _RESPONSIBLE_RE = re.compile(
     r"verantwortlich|vertreten\s+durch|gesch(?:ä|ae)ftsf(?:ü|ue)hrer", re.IGNORECASE
 )
-STRONG_SIGNAL_RES = (_PHONE_RE, _VAT_RE, _EMAIL_RE, _REGISTRY_RE)
+STRONG_SIGNAL_RES = (_PHONE_RE, _VAT_RE, _VALID_EMAIL_RE, _REGISTRY_RE)
 TAIL_ANCHOR_RES = STRONG_SIGNAL_RES + (_RESPONSIBLE_RE,)
 
 KEYWORD_RE = re.compile(
@@ -119,7 +119,7 @@ RESPONSE_FIELDS = (
     "responsible_person",
 )
 ADDRESS_FIELDS = ("street", "house_no", "postcode", "city", "country")
-EMAIL_RE = re.compile(r"^[^@\s\[\]]+@[^@\s\[\]]+\.[A-Za-z]{2,}$")
+VALID_EMAIL_RE = re.compile(r"^[^@\s\[\]]+@[^@\s\[\]]+\.[A-Za-z]{2,}$")
 
 EMPTY_TOKENS = frozenset(
     {
@@ -443,7 +443,7 @@ def map_to_row(data, csv_company_name) -> dict:
     data = data if isinstance(data, dict) else {}
     address = _address(data)
     email = _clean(data.get("email"))
-    email = email.lower() if email and EMAIL_RE.match(email) else None
+    email = email.lower() if email and VALID_EMAIL_RE.match(email) else None
 
     return {
         "legal_name": _clean(data.get("company_name")) or _clean(csv_company_name),
@@ -451,7 +451,7 @@ def map_to_row(data, csv_company_name) -> dict:
         "handelsregister": _clean(data.get("handelsregister")),
         "vat_number": _clean(data.get("vat_number")),
         "phone": _clean(data.get("phone")),
-        "email": email.lower() if email else None,
+        "email": email,
         "responsible_person": _clean(data.get("responsible_person")),
         "raw_json": data.get("_raw", data),
     }

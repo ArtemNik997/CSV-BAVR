@@ -821,7 +821,15 @@ def test_cfemail_empty_page_stays_empty():
 
 @pytest.mark.parametrize(
     "bad_email",
-    ["not-an-email", "", "   ", "missing-at-sign.de", "@no-local.de", "no-domain@"],
+    [
+        "not-an-email",
+        "",
+        "   ",
+        "missing-at-sign.de",
+        "@no-local.de",
+        "no-domain@",
+        "[email protected]",
+    ],
 )
 def test_map_to_row_invalid_email_gives_none(bad_email):
     row = map_to_row({"email": bad_email}, "ACME GmbH")
