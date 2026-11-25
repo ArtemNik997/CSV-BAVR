@@ -4,24 +4,29 @@ import os
 import re
 import sys
 import tempfile
-import time
+import csv
+import io
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import quote
 
-import psycopg2
-from psycopg2.extras import Json, RealDictCursor
-from flask import Flask, request, jsonify, g, send_from_directory
+from psycopg2.extras import Json
+from flask import (
+    Flask,
+    request,
+    jsonify,
+    g,
+    send_from_directory,
+    render_template_string,
+)
 
 import apply_zoom
+from db import COMPANIES_COLUMNS, CompanyStatus, connect, init_db as init_db_tables
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 
 HOST = os.environ.get("FLASK_HOST", "0.0.0.0")
 PORT = int(os.environ.get("FLASK_PORT", 8000))
-
-app = Flask(__name__)
-app.config["MAX_CONTENT_LENGTH"] = 500 * 1024 * 1024
 
 ALLOWED_EXTENSIONS = {".webm", ".mp4", ".ogv"}
 
@@ -39,70 +44,70 @@ MAX_SIDECAR_BYTES = 1024 * 1024
 
 EXECUTOR = ThreadPoolExecutor(max_workers=ZOOM_WORKERS, thread_name_prefix="zoom")
 
+COMPANY_CSV_COLUMNS = (
+    ("Language", "language"),
+    ("Country", "country"),
+    ("Postcode", "postcode"),
+    ("City", "city"),
+    ("Street", "street"),
+    ("HouseNo", "house_no"),
+    ("Web", "web"),
+)
 
-def _db_params():
-    try:
-        return dict(
-            host=os.environ["DB_HOST"],
-            port=int(os.environ.get("DB_PORT", "5432")),
-            dbname=os.environ["DB_NAME"],
-            user=os.environ["DB_USER"],
-            password=os.environ["DB_PASSWORD"],
-            connect_timeout=5,
-        )
-    except KeyError as e:
-        raise RuntimeError(f"Environment variable {e.args[0]} is not set")
+UPSERT_COMPANY_SQL = """
+    INSERT INTO companies
+        (company_name, language, country, postcode, city, street, house_no, web)
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+    ON CONFLICT (company_name) DO UPDATE SET
+        language = EXCLUDED.language,
+        country = EXCLUDED.country,
+        postcode = EXCLUDED.postcode,
+        city = EXCLUDED.city,
+        street = EXCLUDED.street,
+        house_no = EXCLUDED.house_no,
+        web = EXCLUDED.web,
+        updated_at = NOW()
+    RETURNING (xmax = 0) AS inserted
+"""
+
+COMPANY_SELECT = "id, company_name, " + ", ".join(n for n, _ in COMPANIES_COLUMNS)
+
+UPLOAD_COMPANIES_PAGE = """<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Upload companies</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 40rem; margin: 2rem auto;
+           padding: 0 1rem; line-height: 1.5; color-scheme: light dark; }
+    code { word-break: break-all; }
+  </style>
+</head>
+<body>
+  <h1>Upload companies CSV</h1>
+  <form method="post" action="{{ url_for('upload_companies') }}"
+        enctype="multipart/form-data">
+    <p><input type="file" name="file" accept=".csv" required></p>
+    <p><button type="submit">Upload</button></p>
+  </form>
+  <p>UTF-8, delimiter <code>;</code>, header:<br>
+     <code>URL;Company Name;Language;Country;Postcode;City;Street;HouseNo;Web</code></p>
+  <p>Only <code>Company Name</code> is required. Re-uploading updates existing
+     companies and keeps the extracted data.</p>
+  <p><a href="{{ url_for('list_companies') }}">View companies (JSON)</a></p>
+</body>
+</html>
+"""
 
 
-def connect():
-    return psycopg2.connect(cursor_factory=RealDictCursor, **_db_params())
+app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = 500 * 1024 * 1024
 
 
 def init_db(retries=60, delay=2):
     os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-    last_error = None
-    for attempt in range(1, retries + 1):
-        try:
-            conn = connect()
-            break
-        except psycopg2.OperationalError as e:
-            last_error = e
-            print(f"[init_db] DB not ready ({attempt}/{retries}): {e}", flush=True)
-            time.sleep(delay)
-    else:
-        raise RuntimeError("Database is not available") from last_error
-
-    try:
-        with conn, conn.cursor() as cur:
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS videos (
-                    id SERIAL PRIMARY KEY,
-                    company_name TEXT NOT NULL UNIQUE,
-                    file_path TEXT NOT NULL,
-                    video_url TEXT NOT NULL,
-                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-                )
-            """)
-            cur.execute("""
-                ALTER TABLE videos
-                    ADD COLUMN IF NOT EXISTS zoom_sidecar JSONB,
-                    ADD COLUMN IF NOT EXISTS process_status TEXT NOT NULL DEFAULT 'none',
-                    ADD COLUMN IF NOT EXISTS process_error TEXT,
-                    ADD COLUMN IF NOT EXISTS processed_file_path TEXT,
-                    ADD COLUMN IF NOT EXISTS processed_video_url TEXT,
-                    ADD COLUMN IF NOT EXISTS processed_at TIMESTAMPTZ
-            """)
-            cur.execute("""
-                UPDATE videos
-                SET process_status = 'failed',
-                    process_error = 'interrupted by service restart'
-                WHERE process_status IN ('pending', 'processing')
-            """)
-
-    finally:
-        conn.close()
+    init_db_tables(retries=retries, delay=delay)
 
 
 def get_db():
@@ -274,6 +279,51 @@ def run_job(video_id):
     finally:
         if conn is not None:
             conn.close()
+
+
+class CompanyCsvError(ValueError):
+    pass
+
+
+def _clean(value):
+    value = (value or "").strip()
+    return value or None
+
+
+def parse_companies_csv(text):
+    reader = csv.DictReader(io.StringIO(text, newline=""), delimiter=";", quotechar='"')
+    if not reader.fieldnames:
+        raise CompanyCsvError("CSV file is empty")
+    reader.fieldnames = [h.strip() for h in reader.fieldnames]
+    if "Company Name" not in reader.fieldnames:
+        raise CompanyCsvError(
+            "Column 'Company Name' not found (delimiter must be ';'). "
+            "Found columns: " + ", ".join(reader.fieldnames)
+        )
+
+    rows, total = [], 0
+    for raw in reader:
+        total += 1
+        name = _clean(raw.get("Company Name"))
+        if name is None:
+            continue
+        rows.append(
+            (name, *[_clean(raw.get(header)) for header, _ in COMPANY_CSV_COLUMNS])
+        )
+    return rows, total
+
+
+def company_to_dict(record):
+    data = dict(record)
+    status = data.get("status")
+    try:
+        data["status_name"] = CompanyStatus(status).name if status is not None else None
+    except ValueError:
+        data["status_name"] = None
+    for key in ("created_at", "updated_at"):
+        if data.get(key) is not None:
+            data[key] = data[key].isoformat()
+    return data
 
 
 @app.route("/upload", methods=["POST"])
@@ -502,6 +552,91 @@ def job_status(video_id):
         ),
         200,
     )
+
+
+@app.route("/upload_companies", methods=["GET"])
+def upload_companies_form():
+    return render_template_string(UPLOAD_COMPANIES_PAGE)
+
+
+@app.route("/upload_companies", methods=["POST"])
+def upload_companies():
+    file = request.files.get("file")
+    if file is None or not file.filename:
+        return jsonify({"error": "No file provided"}), 400
+
+    try:
+        text = file.read().decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return jsonify({"error": "CSV must be UTF-8 encoded"}), 400
+
+    try:
+        rows, total = parse_companies_csv(text)
+    except CompanyCsvError as e:
+        return jsonify({"error": str(e)}), 400
+
+    skipped = total - len(rows)
+    if skipped:
+        _log(f"[upload_companies] skipped {skipped} row(s) without Company Name")
+
+    db = get_db()
+    imported = updated = 0
+    try:
+        with db.cursor() as cur:
+            for values in rows:
+                cur.execute(UPSERT_COMPANY_SQL, values)
+                if cur.fetchone()["inserted"]:
+                    imported += 1
+                else:
+                    updated += 1
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        return jsonify({"error": f"Database error: {str(e)}"}), 500
+
+    return jsonify({"imported": imported, "updated": updated, "total_rows": total}), 200
+
+
+@app.route("/companies", methods=["GET"])
+def list_companies():
+    sql = f"SELECT {COMPANY_SELECT} FROM companies"
+    params = ()
+
+    status_arg = request.args.get("status")
+    if status_arg is not None:
+        value = status_arg.strip().lower()
+        if value == "pending":
+            sql += " WHERE status IS NULL"
+        else:
+            try:
+                code = CompanyStatus(int(value))
+            except ValueError:
+                return (
+                    jsonify({"error": "status must be an integer 0-5 or 'pending'"}),
+                    400,
+                )
+            sql += " WHERE status = %s"
+            params = (int(code),)
+    sql += " ORDER BY id"
+
+    db = get_db()
+    with db.cursor() as cur:
+        cur.execute(sql, params)
+        records = cur.fetchall()
+    return jsonify([company_to_dict(r) for r in records]), 200
+
+
+@app.route("/companies/<path:company_name>", methods=["GET"])
+def get_company(company_name):
+    db = get_db()
+    record = fetch_one(
+        db,
+        f"SELECT {COMPANY_SELECT} FROM companies WHERE company_name = %s",
+        (company_name.strip(),),
+    )
+    if record is None:
+        return jsonify({"error": "Company not found"}), 404
+    return jsonify(company_to_dict(record)), 200
 
 
 if __name__ == "__main__":
