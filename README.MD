@@ -1,4 +1,4 @@
-# CSV-driven Browser Automation Video Recorder
+# CSV-driven Browser Automation Video Recorder and Parser
 
 Для каждой строки входного CSV инструмент (Python + Playwright) записывает видео автоматизированных действий в браузере: открывает DuckDuckGo, плавно ведёт курсор к полю поиска, посимвольно вводит запрос `Magento developer in <City>`, нажимает поиск и кликает по первому результату. В видео добавлены SVG-курсор, подсветка, ripple при кликах и callout с текстом.
 
@@ -309,6 +309,141 @@ RUN_DOCKER_TESTS=1 pytest -m integration -v
 
 Необязательные переменные: `SERVER_URL` (по умолчанию `http://localhost:8000`) и `PROCESS_TIMEOUT` (секунд, по умолчанию 300). Интеграционные тесты оставляют в БД и в томе `uploads` записи с именами `it-*`.
 
+## Компании и Impressum
+
+Скрипт `enrich_companies.py` загружает сайты компаний из PostgreSQL, находит страницу Impressum / Imprint, извлекает юридические данные через DeepSeek API и записывает результат обратно в БД. Запуск — внутри контейнера `web`.
+
+### Подготовка
+
+1. Добавьте ключ DeepSeek в `.env`:
+   ```
+   DEEPSEEK_API_KEY=sk-...
+   DEEPSEEK_MODEL=deepseek-chat
+   ```
+2. Пересоберите и запустите стек:
+   ```
+   docker compose up --build
+   ```
+3. Загрузите CSV через форму [http://localhost:8000/upload_companies](http://localhost:8000/upload_companies) или через curl (см. ниже).
+
+### Формат CSV
+
+UTF-8, разделитель `;`, ограничитель `"`. Обязательные колонки: `Company Name` и `Web`. Остальные сохраняются как есть.
+
+```
+URL;Company Name;Language;Country;Postcode;City;Street;HouseNo;Web
+"";"nutrimmun GmbH";"";"";"";"";"";"";"https://nutrimmun.de/"
+"";"Barolo & Champagne GbR";"";"";"";"";"";"";"https://www.baroloandchampagne.com/"
+```
+
+Повторный импорт обновляет только CSV-колонки (`language`, `country`, `postcode`, `city`, `street`, `house_no`, `web`). Результаты обогащения (`status`, `legal_name`, `postal_address`, `raw_json` и др.) **не затираются**.
+
+### Запуск обогащения
+
+```
+docker compose exec web python enrich_companies.py [опции]
+```
+
+| Опция              | Значение                                           |
+| ------------------ | -------------------------------------------------- |
+| `--company "NAME"` | обработать только эту компанию (при любом статусе) |
+| `--limit N`        | не более N строк                                   |
+| `--status N`       | только строки с этим статусом (0–5)                |
+| `--force`          | включить в выборку уже успешные строки (статус 0)  |
+| `-v`               | подробный вывод (DEBUG)                            |
+
+По умолчанию обрабатываются все строки со статусом `NULL` (не обработано) или отличным от `0` (OK). Строки со статусом `5` (NO_WEBSITE) переобрабатываются при каждом запуске — это дёшево, сетевых запросов нет.
+
+Примеры:
+
+```
+# Все необработанные
+docker compose exec web python enrich_companies.py
+
+# Одна конкретная компания
+docker compose exec web python enrich_companies.py --company "nutrimmun GmbH"
+
+# Переобработать только ошибки, не более 10
+docker compose exec web python enrich_companies.py --status 4 --limit 10
+
+# Принудительно переобработать всё
+docker compose exec web python enrich_companies.py --force
+```
+
+Код возврата `0` — выборка обработана (даже если есть статусы 1–5). Ненулевой — нет ключа API или БД недоступна.
+
+### Статусы компаний
+
+| Код  | Имя                     | Когда выставляется                                                   |
+| ---- | ----------------------- | -------------------------------------------------------------------- |
+| NULL | _(не обработано)_       | свежий импорт, обогащение ещё не запускалось                         |
+| 0    | OK                      | данные извлечены, адрес полный (postcode + city + street + house_no) |
+| 1    | NO_IMPRESSUM_LINK_FOUND | на главной странице нет ссылки на Impressum / Imprint                |
+| 2    | PARSING_FAILED          | Impressum найден, но DeepSeek не извлёк ни одного поля               |
+| 3    | ADDRESS_INCOMPLETE      | поля извлечены, но адрес неполный                                    |
+| 4    | ERROR                   | сеть, HTTP 4xx/5xx, ошибка API (включая 401); пакет продолжается     |
+| 5    | NO_WEBSITE              | колонка `web` пуста                                                  |
+
+Отсутствие VAT, телефона или имени директора **не понижает** статус. Если адрес полный — это OK.
+
+### Токен-оптимизация
+
+Impressum-страницы содержат навигацию, cookie-баннеры, футеры. Перед отправкой в API текст оптимизируется:
+
+1. Удаляются шумовые строки (Datenschutz, AGB, Menü, языки, ©).
+2. Находится головной якорь (`Impressum`, `Angaben gemäß § 5 TMG/DDG`) и последний сильный сигнал (телефон `+49`, НДС `DE\d{9}`, e-mail, HRB/HRA, Geschäftsführer).
+3. Текст обрезается до окна между якорями («сэндвич»). Если окно длиннее 8000 символов — фильтр по ключевым словам, затем head+tail window.
+4. Cloudflare `data-cfemail` декодируется автоматически.
+
+В логе видно экономию:
+
+```
+nutrimmun GmbH: 4954 -> 4954 chars (~1238 -> ~1238 tokens), strategy=unchanged
+Barolo & Champagne GbR: 8990 -> 5484 chars (~2247 -> ~1371 tokens), tail cut 3433, strategy=sandwich
+```
+
+### Эндпоинты компаний
+
+| Метод и путь                    | Назначение                                                            |
+| ------------------------------- | --------------------------------------------------------------------- |
+| `GET /upload_companies`         | HTML-форма загрузки CSV                                               |
+| `POST /upload_companies`        | импорт CSV, ответ: `{"imported", "updated", "total_rows"}`            |
+| `GET /companies`                | список всех компаний (JSON), фильтр `?status=N` или `?status=pending` |
+| `GET /companies/<company_name>` | одна компания (JSON), 404 если нет                                    |
+
+### Примеры curl
+
+```bash
+# Загрузить CSV
+curl -F "file=@companies.csv" http://localhost:8000/upload_companies
+
+# Список всех компаний
+curl http://localhost:8000/companies
+
+# Только необработанные
+curl "http://localhost:8000/companies?status=pending"
+
+# Одна компания (имя с пробелами и спецсимволами кодируется)
+curl "http://localhost:8000/companies/nutrimmun%20GmbH"
+
+# Компания с & в названии
+curl "http://localhost:8000/companies/Barolo%20%26%20Champagne%20GbR"
+```
+
+В PowerShell используйте `curl.exe`.
+
+### Postman
+
+- `POST /upload_companies`: Body → `form-data`, поле `file` (тип File, выбрать `.csv`). Заголовок `Content-Type` не задавайте.
+- `GET /companies`: без параметров или Params: `status` = `0` / `pending`.
+- `GET /companies/{name}`: имя в URL кодируйте (`%20`, `%26`). Конвертер `<path:...>` принимает `/` в имени.
+
+### Принятые допущения
+
+- Сайты, где ссылка на Impressum рендерится JavaScript-ом и отсутствует в сыром HTML, получают статус `1`. Playwright-fallback не реализован в первой версии.
+- Отступы сэндвича уменьшены относительно рекомендации ТЗ (§5 п.4 «Enlarge margins») — на реальных немецких Impressum меньшие отступы дают лучший результат без потери данных.
+- Ключ `DEEPSEEK_API_KEY` читается из окружения и никогда не логируется. Не коммитьте `.env`.
+
 ## Структура проекта
 
 | Файл                        | Назначение                                                                                                   |
@@ -331,6 +466,9 @@ RUN_DOCKER_TESTS=1 pytest -m integration -v
 | `pytest.ini`                | настройки pytest                                                                                             |
 | `tests/`                    | юнит- и интеграционные тесты                                                                                 |
 | `input.csv`                 | пример входных данных                                                                                        |
+| `db.py`                     | подключение к PostgreSQL, `CompanyStatus`, `init_db()`, `write_company_result()`                             |
+| `impressum.py`              | загрузка страниц, поиск Impressum, оптимизация текста, клиент DeepSeek, маппинг и статусы                    |
+| `enrich_companies.py`       | скрипт обогащения: выборка из БД, цикл обработки, запись результатов                                         |
 
 ## Частые проблемы
 
