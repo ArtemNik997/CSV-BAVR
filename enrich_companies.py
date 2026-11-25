@@ -164,13 +164,20 @@ def process_company(rec: dict, log: logging.Logger) -> tuple[int, int]:
 
     except (FetchError, ApiError) as e:
         log.error("%s | %s", name, e)
-        write_company_result(cid, CompanyStatus.ERROR, impressum_url)
+        save_error(cid, impressum_url, log)
         return CompanyStatus.ERROR, tokens_saved
 
     except Exception:
         log.exception("%s | непредвиденная ошибка", name)
-        write_company_result(cid, CompanyStatus.ERROR, impressum_url)
+        save_error(cid, impressum_url, log)
         return CompanyStatus.ERROR, tokens_saved
+
+
+def save_error(cid, impressum_url, log):
+    try:
+        write_company_result(cid, CompanyStatus.ERROR, impressum_url)
+    except Exception:
+        log.exception("Failed to save status ERROR for id=%s", cid)
 
 
 def main(argv=None) -> int:
